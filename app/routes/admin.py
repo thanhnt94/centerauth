@@ -111,6 +111,7 @@ def add_client():
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
+        backchannel_logout_uri=request.form.get("backchannel_logout_uri"),
         app_icon=request.form.get("app_icon", "fas fa-rocket"),
         app_description=request.form.get("app_description"),
         app_color_theme=request.form.get("app_color_theme", "indigo"),
@@ -137,7 +138,9 @@ def edit_client(id):
         return redirect(url_for("admin.dashboard"))
         
     client.name = request.form.get("name")
+    client.client_secret = request.form.get("client_secret")
     client.redirect_uri = request.form.get("redirect_uri")
+    client.backchannel_logout_uri = request.form.get("backchannel_logout_uri")
     client.app_icon = request.form.get("app_icon")
     client.app_description = request.form.get("app_description")
     client.app_color_theme = request.form.get("app_color_theme")

@@ -16,10 +16,14 @@ def create_app(config_class=Config):
     import os
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+    # Import models early for db.create_all()
     from app.models.user import User
     from app.models.client import Client
     from app.models.audit_log import AuditLog
     from app.models.settings import SystemSetting
+    from app.models.auth_code import AuthCode
+    from app.models.token_blacklist import TokenBlacklist
+    from app.models.user_session import UserLoginSession
 
     # Ensure tables and default data
     with app.app_context():
@@ -53,41 +57,47 @@ def create_app(config_class=Config):
             db.session.commit()
 
         # 3. Seed Default Clients (Ecosystem Apps)
+        # UPDATED: Using the standardized /auth-center/callback format
         clients_data = [
             {
                 "client_id": "mindstack-v3",
                 "client_secret": "mindstack-secret-key-123",
                 "name": "MindStack",
-                "redirect_uri": "http://127.0.0.1:5000/auth/callback",
+                "redirect_uri": "http://127.0.0.1:5000/auth-center/callback",
                 "app_icon": "fas fa-brain",
-                "app_description": "Hệ thống quản lý kiến thức và học tập thông minh dựa trên kỹ thuật lặp lại ngắt quãng (SRS).",
+                "app_description": "Hệ thống quản lý kiến thức và học tập thông minh dựa trên SRS.",
                 "app_color_theme": "indigo"
             },
             {
                 "client_id": "podlearn-v1",
                 "client_secret": "podlearn-secret-key-456",
                 "name": "PodLearn",
-                "redirect_uri": "http://127.0.0.1:5002/auth/callback",
+                "redirect_uri": "http://127.0.0.1:5002/auth-center/callback",
                 "app_icon": "fas fa-user-graduate",
-                "app_description": "Học ngoại ngữ qua video trực quan từ YouTube. Phân tích nội dung và theo dõi tiến độ.",
+                "app_description": "Học ngoại ngữ qua video trực quan từ YouTube.",
                 "app_color_theme": "emerald"
             },
             {
                 "client_id": "iptv-manager",
                 "client_secret": "iptv-secret-key-789",
                 "name": "IPTV Manager",
-                "redirect_uri": "http://127.0.0.1:5003/auth/callback",
+                "redirect_uri": "http://127.0.0.1:5003/auth-center/callback",
                 "app_icon": "fas fa-tv",
-                "app_description": "Quản lý các nguồn phát truyền hình trực tuyến và VOD với bộ lọc thông minh.",
+                "app_description": "Quản lý nguồn phát truyền hình trực tuyến thông minh.",
                 "app_color_theme": "amber"
             }
         ]
         for cd in clients_data:
-            if not Client.query.filter_by(client_id=cd["client_id"]).first():
+            existing_client = Client.query.filter_by(client_id=cd["client_id"]).first()
+            if not existing_client:
                 new_client = Client(**cd)
                 db.session.add(new_client)
+            else:
+                # Update existing client with new standardized callback for ecosystem alignment
+                existing_client.redirect_uri = cd["redirect_uri"]
         db.session.commit()
 
+    # Register blueprints
     from app.routes.auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     
@@ -103,7 +113,6 @@ def create_app(config_class=Config):
         if "user_id" in session:
             user = User.query.get(session["user_id"])
             if user:
-                # Fetch apps for the portal
                 apps = Client.query.filter_by(is_visible_on_portal=True, is_active=True).all()
                 return render_template("auth/success.html", user=user, apps=apps)
         return redirect(url_for("auth.login"))

@@ -10,9 +10,11 @@ class Client(db.Model):
     client_secret = db.Column(db.String(255), nullable=False)
     name = db.Column(db.String(255), nullable=False)
     
-    # Authorized redirect URIs (comma-separated or just one for simple implementation)
+    # Authorized redirect URIs (comma-separated)
     redirect_uri = db.Column(db.Text, nullable=False)
     
+    # Webhook endpoint for Global Logout (Single Sign-Out)
+    backchannel_logout_uri = db.Column(db.Text, nullable=True)
     
     # Portal Display Configuration
     app_icon = db.Column(db.String(50), default="fas fa-rocket") # FontAwesome class
@@ -29,6 +31,7 @@ class Client(db.Model):
             'client_id': self.client_id,
             'name': self.name,
             'redirect_uri': self.redirect_uri,
+            'backchannel_logout_uri': self.backchannel_logout_uri,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

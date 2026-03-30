@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nhật ký hệ thống - Central Auth Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: "Inter", sans-serif; background-color: #f8fafc; }
+        .data-card { background: white; border-radius: 0.75rem; border: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <nav class="bg-indigo-700 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-shield-alt text-xl"></i>
+                <span class="font-bold tracking-tight">Central Auth Admin</span>
+            </div>
+            <div class="flex items-center gap-6 text-sm font-medium">
+                <a href="{{ url_for('admin.dashboard') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-cubes opacity-70"></i> Clients
+                </a>
+                <a href="{{ url_for('admin.users') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-users opacity-70"></i> Users
+                </a>
+                <a href="{{ url_for('admin.logs') }}" class="text-white border-b-2 border-white pb-1 flex items-center gap-2">
+                    <i class="fas fa-history"></i> Logs
+                </a>
+                <a href="{{ url_for('admin.settings') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-cog opacity-70"></i> Settings
+                </a>
+                <a href="{{ url_for('index') }}" class="hover:text-indigo-200 transition ml-4">
+                    <i class="fas fa-home opacity-70"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-6 md:p-8">
+        <div class="mb-8 text-left">
+            <h1 class="text-2xl font-bold text-slate-900">Nhật ký hệ thống</h1>
+            <p class="text-slate-500 text-sm mt-1">Theo dõi mọi hoạt động quan trọng diễn ra trong hệ thống.</p>
+        </div>
+
+        <div class="data-card overflow-hidden">
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Thời gian</th>
+                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Sự kiện</th>
+                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Đối tượng / Chi tiết</th>
+                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">IP Address</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for log in logs %}
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">
+                            {{ log.created_at.strftime('%d/%m/%Y %H:%M:%S') if log.created_at else 'N/A' }}
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold 
+                                {% if log.event == 'CLIENT_ADDED' %}bg-indigo-100 text-indigo-700
+                                {% elif log.event == 'USER_LOGIN' %}bg-emerald-100 text-emerald-700
+                                {% elif log.event == 'USER_EDITED' %}bg-amber-100 text-amber-700
+                                {% elif log.event == 'FAILED_LOGIN' %}bg-rose-100 text-rose-700
+                                {% else %}bg-slate-100 text-slate-600{% endif %}">
+                                {{ log.event }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-sm text-slate-700">{{ log.details }}</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">By: {{ log.user.username if log.user else 'System' }}</div>
+                        </td>
+                        <td class="px-6 py-4 text-[10px] font-mono text-slate-400">
+                            {{ log.ip_address }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-12 text-center text-slate-400">
+                            <i class="fas fa-history text-4xl mb-3 block"></i>
+                            <p>Chưa có nhật ký hoạt động nào.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+</body>
+</html>

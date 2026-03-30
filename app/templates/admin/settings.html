@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cài đặt hệ thống - Central Auth Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: "Inter", sans-serif; background-color: #f8fafc; }
+        .data-card { background: white; border-radius: 0.75rem; border: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <nav class="bg-indigo-700 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-shield-alt text-xl"></i>
+                <span class="font-bold tracking-tight">Central Auth Admin</span>
+            </div>
+            <div class="flex items-center gap-6 text-sm font-medium">
+                <a href="{{ url_for('admin.dashboard') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-cubes opacity-70"></i> Clients
+                </a>
+                <a href="{{ url_for('admin.users') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-users opacity-70"></i> Users
+                </a>
+                <a href="{{ url_for('admin.logs') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-history opacity-70"></i> Logs
+                </a>
+                <a href="{{ url_for('admin.settings') }}" class="text-white border-b-2 border-white pb-1 flex items-center gap-2">
+                    <i class="fas fa-cog"></i> Settings
+                </a>
+                <a href="{{ url_for('index') }}" class="hover:text-indigo-200 transition ml-4">
+                    <i class="fas fa-home opacity-70"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto p-6 md:p-8">
+        <div class="mb-8 text-left">
+            <h1 class="text-2xl font-bold text-slate-900">Cài đặt hệ thống</h1>
+            <p class="text-slate-500 text-sm mt-1">Cấu hình các tham số vận hành của Central Auth.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-6 p-4 rounded-lg {% if category == "success" %}bg-emerald-50 text-emerald-700 border border-emerald-200{% else %}bg-rose-50 text-rose-700 border border-rose-200{% endif %} text-sm">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('admin.settings') }}" method="POST" class="space-y-8">
+            {% for category, settings in categories.items() %}
+            <div class="data-card p-8">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        {% if category == 'storage' %}<i class="fas fa-hdd"></i>
+                        {% elif category == 'auth' %}<i class="fas fa-user-lock"></i>
+                        {% elif category == 'branding' %}<i class="fas fa-paint-brush"></i>
+                        {% else %}<i class="fas fa-sliders-h"></i>{% endif %}
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900 capitalize">{{ category }}</h3>
+                </div>
+
+                <div class="space-y-6">
+                    {% for setting in settings %}
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start pb-6 {% if not loop.last %}border-b border-slate-100{% endif %}">
+                        <div class="md:col-span-1">
+                            <label class="block text-sm font-bold text-slate-800 mb-1">{{ setting.key }}</label>
+                            <p class="text-xs text-slate-400">{{ setting.description }}</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            {% if setting.value == 'true' or setting.value == 'false' %}
+                            <select name="{{ setting.key }}" class="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                                <option value="true" {% if setting.value == 'true' %}selected{% endif %}>Bật (True)</option>
+                                <option value="false" {% if setting.value == 'false' %}selected{% endif %}>Tắt (False)</option>
+                            </select>
+                            {% else %}
+                            <input type="text" name="{{ setting.key }}" value="{{ setting.value }}" 
+                                class="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono">
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="flex justify-end pt-4">
+                <button type="submit" class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 active:scale-95">
+                    Lưu toàn bộ cài đặt
+                </button>
+            </div>
+        </form>
+    </main>
+</body>
+</html>

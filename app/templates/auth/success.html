@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thành công - Ecosystem Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: "Outfit", sans-serif; background: #0f172a; color: #f8fafc; overflow-x: hidden; }
+        .bg-mesh {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+            background: 
+                radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(245, 158, 11, 0.15) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%);
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .glass-card:hover { 
+            transform: translateY(-8px); 
+            background: rgba(30, 41, 59, 0.85);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .btn-portal {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-portal:hover { transform: scale(1.05); filter: brightness(1.1); }
+        .hero-animate { animation: fadeInScale 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.9) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .success-badge { animation: pulseSuccess 2s infinite; }
+        @keyframes pulseSuccess {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="bg-mesh"></div>
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 px-6 py-4">
+        <div class="max-w-6xl mx-auto glass-card rounded-2xl px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-emerald-500 flex items-center justify-center text-white shadow-lg">
+                    <i class="fas fa-shield-halved text-lg"></i>
+                </div>
+                <span class="font-bold text-xl tracking-tight hidden sm:block">Central Auth</span>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('user.profile') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-sm font-medium">
+                    {% if user.avatar_url %}
+                    <img src="{{ user.avatar_url }}" class="w-7 h-7 rounded-full object-cover border border-white/20">
+                    {% else %}
+                    <div class="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{{ user.full_name[:1] }}</div>
+                    {% endif %}
+                    <span class="hidden md:block">{{ user.full_name }}</span>
+                </a>
+                
+                    {% if user.is_admin %}
+                    <a href="{{ url_for('admin.dashboard') }}" class="p-2 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white transition" title="Admin Panel">
+                        <i class="fas fa-lock-open text-xs"></i>
+                    </a>
+                    {% endif %}
+                
+                <a href="{{ url_for('auth.logout') }}" class="p-2 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition" title="Đăng xuất">
+                    <i class="fas fa-sign-out-alt text-xs"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-6 py-12 md:py-20 text-center">
+        <!-- Hero Section -->
+        <div class="hero-animate mb-20">
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-6 success-badge">
+                <i class="fas fa-check-circle text-xs"></i>
+                <span class="text-xs font-bold uppercase tracking-widest">Xác thực thành công</span>
+            </div>
+            <h1 class="text-4xl md:text-6xl font-extrabold mb-6 tracking-tight">Chào mừng quay lại, <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400">{{ user.full_name }}</span>!</h1>
+            <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">Bạn đã truy cập vào trung tâm điều hành Mindstack Ecosystem. Hãy chọn dự án bạn muốn bắt đầu làm việc ngay bây giờ.</p>
+        </div>
+
+        <!-- Project Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            {% for app in apps %}
+            <!-- App Card: {{ app.name }} -->
+            <div class="glass-card p-10 rounded-[2.5rem] card-hover flex flex-col items-center group">
+                <div class="w-24 h-24 rounded-3xl bg-gradient-to-br from-{{ app.app_color_theme }}-500 to-{{ app.app_color_theme }}-600 flex items-center justify-center mb-8 shadow-xl shadow-{{ app.app_color_theme }}-500/20 group-hover:rotate-6 transition-transform">
+                    <i class="{{ app.app_icon }} text-4xl text-white"></i>
+                </div>
+                <h3 class="text-2xl font-bold mb-3 tracking-tight">{{ app.name }}</h3>
+                <p class="text-slate-400 text-sm mb-8 leading-relaxed text-center">{{ app.app_description }}</p>
+                
+                {# Construct the login URL for the app #}
+                {% set login_url = app.redirect_uri.replace('/auth/callback', '/auth/login') %}
+                
+                <a href="{{ login_url }}" class="w-full py-4 rounded-2xl bg-gradient-to-br from-{{ app.app_color_theme }}-500 to-{{ app.app_color_theme }}-600 hover:scale-105 transition-all text-white font-bold text-center block shadow-lg shadow-{{ app.app_color_theme }}-500/25 flex items-center justify-center gap-2">
+                    Mở Ứng Dụng <i class="fas fa-arrow-right text-xs"></i>
+                </a>
+            </div>
+            {% else %}
+            <div class="col-span-full py-20 text-center glass-card rounded-[2.5rem]">
+                <i class="fas fa-ghost text-4xl text-slate-500 mb-4"></i>
+                <p class="text-slate-400">Chưa có ứng dụng nào được đăng ký trong hệ thống.</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-24 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 text-slate-500 text-xs text-center">
+            <p>&copy; 2026 Mindstack Central Auth System. Bảo mật bởi Hexagonal Architecture.</p>
+            <div class="flex gap-6">
+                <a href="#" class="hover:text-white transition">Hỗ trợ</a>
+                <a href="#" class="hover:text-white transition">Tài liệu API</a>
+                <a href="#" class="hover:text-white transition">Chính sách bảo mật</a>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        // Smooth hover effect for cards
+        document.querySelectorAll('.glass-card').forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+    </script>
+</body>
+</html>

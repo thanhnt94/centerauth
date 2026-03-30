@@ -3,145 +3,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Thành công - Ecosystem Portal</title>
+    <title>Dashboard - Mindstack Ecosystem</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: "Outfit", sans-serif; background: #0f172a; color: #f8fafc; overflow-x: hidden; }
-        .bg-mesh {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
-            background: 
-                radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(245, 158, 11, 0.15) 0px, transparent 50%),
-                radial-gradient(at 0% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%);
+        body { font-family: "Inter", sans-serif; background: #f8fafc; color: #1e293b; -webkit-font-smoothing: antialiased; }
+        .nav-link { position: relative; }
+        .nav-link::after {
+            content: ''; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
+            background: #4f46e5; transition: width 0.3s ease;
         }
-        .glass-card {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        .nav-link:hover::after { width: 100%; }
+        .app-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
         }
-        .glass-card:hover { 
-            transform: translateY(-8px); 
-            background: rgba(30, 41, 59, 0.85);
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        .app-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+            border-color: #cbd5e1;
         }
-        .btn-portal {
-            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-            transition: all 0.3s ease;
-        }
-        .btn-portal:hover { transform: scale(1.05); filter: brightness(1.1); }
-        .hero-animate { animation: fadeInScale 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes fadeInScale {
-            from { opacity: 0; transform: scale(0.9) translateY(20px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        .success-badge { animation: pulseSuccess 2s infinite; }
-        @keyframes pulseSuccess {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        .bg-light-soft {
+            background-color: #ffffff;
+            background-image: 
+                radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.03) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
         }
     </style>
 </head>
-<body class="min-h-screen">
-    <div class="bg-mesh"></div>
+<body class="min-h-screen bg-light-soft">
 
-    <!-- Navigation -->
-    <nav class="sticky top-0 z-50 px-6 py-4">
-        <div class="max-w-6xl mx-auto glass-card rounded-2xl px-6 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-emerald-500 flex items-center justify-center text-white shadow-lg">
-                    <i class="fas fa-shield-halved text-lg"></i>
+    <!-- Full-Side Navigation -->
+    <nav class="w-full bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="px-6 h-16 flex items-center justify-between mx-auto">
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-200">
+                        <i class="fas fa-shield-halved text-sm"></i>
+                    </div>
+                    <span class="font-bold text-lg tracking-tight text-slate-900">Central Auth</span>
                 </div>
-                <span class="font-bold text-xl tracking-tight hidden sm:block">Central Auth</span>
+                
+                <div class="hidden md:flex items-center gap-6 ml-8">
+                    <a href="#" class="text-sm font-semibold text-indigo-600 nav-link">Trang chủ</a>
+                    <a href="#" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition nav-link">Tài liệu</a>
+                    <a href="#" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition nav-link">Hỗ trợ</a>
+                </div>
             </div>
             
-            <div class="flex items-center gap-4">
-                <a href="{{ url_for('user.profile') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-sm font-medium">
+            <div class="flex items-center gap-5">
+                <div class="flex items-center gap-3 pr-4 border-r border-slate-100">
+                    <div class="text-right hidden sm:block">
+                        <div class="text-xs font-bold text-slate-900">{{ user.full_name }}</div>
+                        <div class="text-[10px] text-slate-400 font-medium">Sẵn sàng làm việc</div>
+                    </div>
                     {% if user.avatar_url %}
-                    <img src="{{ user.avatar_url }}" class="w-7 h-7 rounded-full object-cover border border-white/20">
+                    <img src="{{ user.avatar_url }}" class="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100">
                     {% else %}
-                    <div class="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{{ user.full_name[:1] }}</div>
+                    <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200">
+                        {{ user.full_name[:1] | upper }}
+                    </div>
                     {% endif %}
-                    <span class="hidden md:block">{{ user.full_name }}</span>
-                </a>
+                </div>
                 
+                <div class="flex items-center gap-2">
                     {% if user.is_admin %}
-                    <a href="{{ url_for('admin.dashboard') }}" class="p-2 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white transition" title="Admin Panel">
-                        <i class="fas fa-lock-open text-xs"></i>
+                    <a href="{{ url_for('admin.dashboard') }}" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-50 transition" title="Quản trị">
+                        <i class="fas fa-cog text-sm"></i>
                     </a>
                     {% endif %}
-                
-                <a href="{{ url_for('auth.logout') }}" class="p-2 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition" title="Đăng xuất">
-                    <i class="fas fa-sign-out-alt text-xs"></i>
-                </a>
+                    <a href="{{ url_for('auth.logout') }}" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition" title="Đăng xuất">
+                        <i class="fas fa-power-off text-sm"></i>
+                    </a>
+                </div>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-6xl mx-auto px-6 py-12 md:py-20 text-center">
+    <main class="w-full max-w-7xl mx-auto px-6 py-12 md:py-20">
         <!-- Hero Section -->
-        <div class="hero-animate mb-20">
-            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-6 success-badge">
-                <i class="fas fa-check-circle text-xs"></i>
-                <span class="text-xs font-bold uppercase tracking-widest">Xác thực thành công</span>
-            </div>
-            <h1 class="text-4xl md:text-6xl font-extrabold mb-6 tracking-tight">Chào mừng quay lại, <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400">{{ user.full_name }}</span>!</h1>
-            <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">Bạn đã truy cập vào trung tâm điều hành Mindstack Ecosystem. Hãy chọn dự án bạn muốn bắt đầu làm việc ngay bây giờ.</p>
+        <div class="mb-16">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-slate-900 mb-4 tracking-tight leading-tight">
+                Xin chào, <span class="text-indigo-600">{{ user.full_name }}</span>.
+            </h1>
+            <p class="text-slate-500 text-lg max-w-3xl leading-relaxed">
+                Chào mừng bạn quay lại hệ sinh thái Mindstack. Đây là trung tâm điều hòa dịch vụ của bạn. 
+                Vui lòng chọn một ứng dụng để bắt đầu phiên làm việc.
+            </p>
         </div>
 
         <!-- Project Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for app in apps %}
-            <!-- App Card: {{ app.name }} -->
-            <div class="glass-card p-10 rounded-[2.5rem] card-hover flex flex-col items-center group">
-                <div class="w-24 h-24 rounded-3xl bg-gradient-to-br from-{{ app.app_color_theme }}-500 to-{{ app.app_color_theme }}-600 flex items-center justify-center mb-8 shadow-xl shadow-{{ app.app_color_theme }}-500/20 group-hover:rotate-6 transition-transform">
-                    <i class="{{ app.app_icon }} text-4xl text-white"></i>
+            <div class="app-card rounded-3xl p-8 flex flex-col group relative overflow-hidden">
+                <!-- App Icon -->
+                <div class="w-14 h-14 rounded-2xl bg-{{ app.app_color_theme }}-50 text-{{ app.app_color_theme }}-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <i class="{{ app.app_icon }} text-2xl"></i>
                 </div>
-                <h3 class="text-2xl font-bold mb-3 tracking-tight">{{ app.name }}</h3>
-                <p class="text-slate-400 text-sm mb-8 leading-relaxed text-center">{{ app.app_description }}</p>
                 
-                {# Construct the login URL for the app #}
-                {% set login_url = app.redirect_uri.replace('/auth/callback', '/auth/login') %}
+                <h3 class="text-xl font-bold text-slate-900 mb-2">{{ app.name }}</h3>
+                <p class="text-slate-500 text-sm mb-8 leading-relaxed flex-grow">
+                    {{ app.app_description or "Chưa có mô tả cho ứng dụng này trong hệ sinh thái." }}
+                </p>
                 
-                <a href="{{ login_url }}" class="w-full py-4 rounded-2xl bg-gradient-to-br from-{{ app.app_color_theme }}-500 to-{{ app.app_color_theme }}-600 hover:scale-105 transition-all text-white font-bold text-center block shadow-lg shadow-{{ app.app_color_theme }}-500/25 flex items-center justify-center gap-2">
-                    Mở Ứng Dụng <i class="fas fa-arrow-right text-xs"></i>
+                {% set login_url = app.redirect_uri.replace('/auth-center/callback', '/auth/login') %}
+                
+                <a href="{{ login_url }}" class="flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200">
+                    Tiếp tục <i class="fas fa-arrow-right text-[10px] opacity-70"></i>
                 </a>
+
+                <!-- Background Subtle Hint -->
+                <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-{{ app.app_color_theme }}-500/5 rounded-full"></div>
             </div>
             {% else %}
-            <div class="col-span-full py-20 text-center glass-card rounded-[2.5rem]">
-                <i class="fas fa-ghost text-4xl text-slate-500 mb-4"></i>
-                <p class="text-slate-400">Chưa có ứng dụng nào được đăng ký trong hệ thống.</p>
+            <div class="col-span-full py-24 flex flex-col items-center justify-center bg-white border border-dashed border-slate-200 rounded-[2.5rem]">
+                <div class="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mb-4">
+                    <i class="fas fa-inbox text-slate-300 text-2xl"></i>
+                </div>
+                <p class="text-slate-400 font-medium text-lg italic">Đang chờ đăng ký ứng dụng...</p>
+                <p class="text-slate-300 text-sm mt-1">Truy cập Admin Panel để thiết lập Ecosystem Clients.</p>
             </div>
             {% endfor %}
         </div>
 
         <!-- Footer -->
-        <footer class="mt-24 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 text-slate-500 text-xs text-center">
-            <p>&copy; 2026 Mindstack Central Auth System. Bảo mật bởi Hexagonal Architecture.</p>
-            <div class="flex gap-6">
-                <a href="#" class="hover:text-white transition">Hỗ trợ</a>
-                <a href="#" class="hover:text-white transition">Tài liệu API</a>
-                <a href="#" class="hover:text-white transition">Chính sách bảo mật</a>
+        <footer class="mt-32 pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 text-slate-400 text-xs">
+            <p>&copy; 2026 Mindstack Ecosystem. Built with Modular Monolith Architecture.</p>
+            <div class="flex gap-8 font-medium">
+                <a href="#" class="hover:text-indigo-600 transition">Hỗ trợ kỹ thuật</a>
+                <a href="#" class="hover:text-indigo-600 transition">Chính sách bảo mật</a>
+                <a href="#" class="hover:text-indigo-600 transition">GitHub</a>
             </div>
         </footer>
     </main>
-
-    <script>
-        // Smooth hover effect for cards
-        document.querySelectorAll('.glass-card').forEach(card => {
-            card.addEventListener('mousemove', e => {
-                const rect = card.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                card.style.setProperty('--mouse-x', `${x}px`);
-                card.style.setProperty('--mouse-y', `${y}px`);
-            });
-        });
-    </script>
 </body>
 </html>

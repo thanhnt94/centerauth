@@ -115,7 +115,8 @@ def add_client():
         app_icon=request.form.get("app_icon", "fas fa-rocket"),
         app_description=request.form.get("app_description"),
         app_color_theme=request.form.get("app_color_theme", "indigo"),
-        is_visible_on_portal=request.form.get("is_visible_on_portal") == "on"
+        is_visible_on_portal=request.form.get("is_visible_on_portal") == "on" if request.form.get("is_visible_on_portal") is not None else True,
+        is_active=True # Default to active on creation
     )
     
     try:

@@ -29,9 +29,14 @@ class Client(db.Model):
         return {
             'id': self.id,
             'client_id': self.client_id,
+            'client_secret': self.client_secret,
             'name': self.name,
             'redirect_uri': self.redirect_uri,
             'backchannel_logout_uri': self.backchannel_logout_uri,
+            'app_icon': self.app_icon,
+            'app_description': self.app_description,
+            'app_color_theme': self.app_color_theme,
+            'is_visible_on_portal': self.is_visible_on_portal,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

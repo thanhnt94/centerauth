@@ -177,3 +177,51 @@ def delete_client(id):
         flash(f"Lỗi khi xóa client: {str(e)}", "danger")
         
     return redirect(url_for("admin.dashboard"))
+
+@admin_bp.route("/api/client/ping/<id>")
+def ping_client(id):
+    """Check if the client application is reachable using standardized health checks."""
+    client = Client.query.get(id)
+    if not client:
+        return {"status": "error", "message": "Client not found"}, 404
+        
+    import urllib.request
+    from urllib.parse import urlparse
+    import socket
+    
+    # Try to extract base URL from redirect_uri
+    try:
+        parsed = urlparse(client.redirect_uri)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+        # WE TRY TWO STRATEGIES:
+        # 1. Standardized Health API (Fastest and more reliable)
+        # 2. Base URL fallback (Legacy)
+        
+        health_url = f"{base_url}/api/health"
+        
+        def check_url(url, timeout=5.0):
+            req = urllib.request.Request(url, headers={'User-Agent': 'CentralAuth-HealthCheck/2.0'})
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    # Status < 400 means success (200, 301, 302, etc. are followed and resolved)
+                    if response.status < 400:
+                        return True, f"Connected to {url}"
+            except Exception as e:
+                return False, str(e)
+            return False, "Unknown Error"
+
+        # Strategy 1: /api/health
+        success, msg = check_url(health_url, timeout=3.0)
+        if success:
+            return {"status": "online", "message": f"Verified via {health_url}"}
+            
+        # Strategy 2: Base URL fallback
+        success, msg = check_url(base_url, timeout=5.0)
+        if success:
+            return {"status": "online", "message": f"Verified via {base_url} (Redirect followed)"}
+            
+        return {"status": "offline", "message": msg}
+        
+    except Exception as e:
+        return {"status": "offline", "message": str(e)}

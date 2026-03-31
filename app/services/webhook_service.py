@@ -10,21 +10,22 @@ class WebhookService:
     """
 
     @staticmethod
-    def send_logout_notification(logout_uri: str, user_id: str, client_id: str) -> bool:
+    def send_logout_notification(logout_uri: str, user_id: str, client: Any) -> bool:
         """
         Sends a Back-channel Logout notification to a client's webhook.
         Includes a 'logout_token' (JWT) to ensure the request is from CentralAuth.
         """
-        if not logout_uri:
+        if not logout_uri or not client:
             return False
 
-        secret = current_app.config['JWT_SECRET_KEY']
+        # Use the specific client_secret for signing to ensure the client can verify it
+        secret = client.client_secret
         
         # Identity token specifically for logout (OIDC-like)
         logout_payload = {
             "iss": current_app.config.get("SITE_NAME", "CentralAuth"),
             "sub": user_id,
-            "aud": client_id,
+            "aud": client.client_id,
             "iat": int(time.time()),
             "exp": int(time.time()) + 120, # Short TTL (2m)
             "events": {
@@ -43,13 +44,13 @@ class WebhookService:
             )
             
             if response.status_code == 200:
-                current_app.logger.info(f"Logout notification successful for {client_id}")
+                current_app.logger.info(f"Logout notification successful for {client.client_id}")
                 return True
             else:
-                current_app.logger.warning(f"Logout notification failed for {client_id}: {response.status_code}")
+                current_app.logger.warning(f"Logout notification failed for {client.client_id}: {response.status_code}")
                 return False
         except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"Error sending logout notification to {client_id}: {e}")
+            current_app.logger.error(f"Error sending logout notification to {client.client_id}: {e}")
             return False
 
     @staticmethod
@@ -69,7 +70,7 @@ class WebhookService:
                 WebhookService.send_logout_notification(
                     client.backchannel_logout_uri,
                     user_id,
-                    client.client_id
+                    client
                 )
             
             # Remove the local session tracking

@@ -123,6 +123,7 @@ def login():
     # Handle Login Submission
     login_id = request.form.get("login_id") or (request.get_json().get("username") if request.is_json else None)
     password = request.form.get("password") or (request.get_json().get("password") if request.is_json else None)
+    remember = request.form.get("remember") == "on"
 
     user = User.query.filter(or_(User.username == login_id, User.email == login_id)).first()
     if not user or not user.check_password(password) or not user.is_active:
@@ -132,7 +133,10 @@ def login():
         return redirect(url_for("auth.login", return_to=return_to, client_id=client_id))
 
     # Authenticate Browser Session
+    session.clear() # Clear any existing flash messages/old session
     session["user_id"] = user.id
+    if remember:
+        session.permanent = True
 
     if client and return_to:
         auth_code = AuthCode(user_id=user.id, client_id=client_id, redirect_uri=return_to)

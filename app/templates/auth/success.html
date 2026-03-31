@@ -108,7 +108,7 @@
                     {{ app.app_description or "Chưa có mô tả cho ứng dụng này trong hệ sinh thái." }}
                 </p>
                 
-                {% set login_url = app.redirect_uri.replace('/auth-center/callback', '/auth/login') %}
+                {% set login_url = app.redirect_uri.replace('/auth-center/callback', '/auth-center/login') %}
                 
                 <a href="{{ login_url }}" class="flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200">
                     Tiếp tục <i class="fas fa-arrow-right text-[10px] opacity-70"></i>

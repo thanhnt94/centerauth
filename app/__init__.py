@@ -64,27 +64,36 @@ def create_app(config_class=Config):
                 "client_secret": "mindstack-secret-key-123",
                 "name": "MindStack",
                 "redirect_uri": "http://127.0.0.1:5000/auth-center/callback",
+                "backchannel_logout_uri": "http://127.0.0.1:5000/auth-center/backchannel-logout",
                 "app_icon": "fas fa-brain",
                 "app_description": "Hệ thống quản lý kiến thức và học tập thông minh dựa trên SRS.",
-                "app_color_theme": "indigo"
+                "app_color_theme": "indigo",
+                "is_active": True,
+                "is_visible_on_portal": True
             },
             {
                 "client_id": "podlearn-v1",
                 "client_secret": "podlearn-secret-key-456",
                 "name": "PodLearn",
                 "redirect_uri": "http://127.0.0.1:5002/auth-center/callback",
+                "backchannel_logout_uri": "http://127.0.0.1:5002/auth-center/webhook/backchannel-logout",
                 "app_icon": "fas fa-user-graduate",
                 "app_description": "Học ngoại ngữ qua video trực quan từ YouTube.",
-                "app_color_theme": "emerald"
+                "app_color_theme": "emerald",
+                "is_active": True,
+                "is_visible_on_portal": True
             },
             {
                 "client_id": "iptv-manager",
                 "client_secret": "iptv-secret-key-789",
                 "name": "IPTV Manager",
                 "redirect_uri": "http://127.0.0.1:5003/auth-center/callback",
+                "backchannel_logout_uri": "http://127.0.0.1:5003/auth-center/backchannel-logout",
                 "app_icon": "fas fa-tv",
                 "app_description": "Quản lý nguồn phát truyền hình trực tuyến thông minh.",
-                "app_color_theme": "amber"
+                "app_color_theme": "amber",
+                "is_active": True,
+                "is_visible_on_portal": True
             }
         ]
         for cd in clients_data:
@@ -93,8 +102,12 @@ def create_app(config_class=Config):
                 new_client = Client(**cd)
                 db.session.add(new_client)
             else:
-                # Update existing client with new standardized callback for ecosystem alignment
+                # Update existing client with new standardized callback, logout and secret for ecosystem alignment
+                existing_client.client_secret = cd["client_secret"]
                 existing_client.redirect_uri = cd["redirect_uri"]
+                existing_client.backchannel_logout_uri = cd["backchannel_logout_uri"]
+                existing_client.is_active = True
+                existing_client.is_visible_on_portal = True
         db.session.commit()
 
     # Register blueprints

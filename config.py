@@ -9,8 +9,11 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 class Config:
     """Application configuration."""
+    # Session Configuration
     SECRET_KEY = os.environ.get('SECRET_KEY', 'default-dev-secret-key')
+    PERMANENT_SESSION_LIFETIME = 30 * 24 * 60 * 60 # 30 Days (seconds)
     SESSION_COOKIE_NAME = 'centralauth_session'
+    # SESSION_COOKIE_DOMAIN = '.dev.com' # Uncomment and set for subdomain support in production
     
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default-jwt-secret-key')
     JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 24))

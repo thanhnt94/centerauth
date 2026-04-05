@@ -297,7 +297,7 @@
             const baseUrl = document.getElementById('helper_base_url').value.trim().replace(/\/$/, '');
             if (baseUrl) {
                 document.getElementById('field_redirect_uri').value = baseUrl + '/auth-center/callback';
-                document.getElementById('field_backchannel_logout_uri').value = baseUrl + '/auth-center/webhook/backchannel-logout';
+                document.getElementById('field_backchannel_logout_uri').value = baseUrl + '/auth-center/backchannel-logout';
                 
                 // If it's a new client and name is empty, try to guess name from URL
                 if (!document.getElementById('field_name').value) {
@@ -344,9 +344,18 @@
                 document.getElementById('helper_base_url').value = "";
             }
 
-            // Close advanced section by default on edit
-            document.getElementById('advancedSettings').classList.add('hidden');
-            document.getElementById('advancedChevron').classList.remove('rotate-90');
+            // FIX: Programmatic .value= doesn't fire oninput, so explicitly sync URLs
+            autoFillUrls();
+
+            // Smart advanced section: auto-expand if webhook looks stale (127.0.0.1)
+            const currentWebhook = document.getElementById('field_backchannel_logout_uri').value;
+            if (currentWebhook.includes('127.0.0.1') || !currentWebhook) {
+                document.getElementById('advancedSettings').classList.remove('hidden');
+                document.getElementById('advancedChevron').classList.add('rotate-90');
+            } else {
+                document.getElementById('advancedSettings').classList.add('hidden');
+                document.getElementById('advancedChevron').classList.remove('rotate-90');
+            }
 
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';

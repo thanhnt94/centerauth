@@ -181,10 +181,16 @@
                                 <span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Chỉ có ở App con</span>
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <button onclick="confirmSync('${clientId}', '${user.email}')" 
-                                    class="text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ml-auto">
-                                    <i class="fas fa-file-import"></i> Sync về Central
-                                </button>
+                                <div class="flex items-center gap-2 justify-end">
+                                    <button onclick="confirmSync('${clientId}', '${user.email}')" 
+                                        class="text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                                        <i class="fas fa-file-import"></i> Sync về Central
+                                    </button>
+                                    <button onclick="deleteUser('${clientId}', '${user.email}')" 
+                                        class="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                                        <i class="fas fa-trash"></i> Xoá
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -202,10 +208,16 @@
                                 <span class="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Chưa liên kết ID</span>
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <button onclick="linkUser('${clientId}', '${user.email}', '${user.ca_id_suggestion}')" 
-                                    class="text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ml-auto">
-                                    <i class="fas fa-link"></i> Khớp ID ngay
-                                </button>
+                                <div class="flex items-center gap-2 justify-end">
+                                    <button onclick="linkUser('${clientId}', '${user.email}', '${user.ca_id_suggestion}')" 
+                                        class="text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                                        <i class="fas fa-link"></i> Khớp ID ngay
+                                    </button>
+                                    <button onclick="deleteUser('${clientId}', '${user.email}')" 
+                                        class="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                                        <i class="fas fa-trash"></i> Xoá
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -324,6 +336,28 @@
                 if (data.status === 'success') {
                     alert(`✅ ${data.message}`);
                     runScan(); // Refresh
+                } else {
+                    alert('❌ Lỗi: ' + data.message);
+                }
+            } catch (e) {
+                alert('Lỗi kết nối: ' + e.message);
+            }
+        }
+        async function deleteUser(clientId, email) {
+            if (!confirm(`⚠️ Bạn có chắc muốn XOÁ user ${email} khỏi ${clientId}?\n\nHành động này KHÔNG THỂ hoàn tác!`)) return;
+            if (!confirm(`🔴 XÁC NHẬN LẦN CUỐI: Xoá ${email} khỏi ${clientId}?`)) return;
+            
+            try {
+                const response = await fetch('/admin/api/sync/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'delete_user', client_id: clientId, email: email })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    alert(`✅ ${data.message}`);
+                    runScan();
                 } else {
                     alert('❌ Lỗi: ' + data.message);
                 }

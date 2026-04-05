@@ -188,3 +188,33 @@ class SyncService:
                 return False, f"App returned {response.status_code}: {response.text[:100]}"
         except Exception as e:
             return False, f"Connection error: {str(e)}"
+
+    @staticmethod
+    def delete_remote_user(client_id: str, email: str):
+        """Delete a user from a satellite app's database."""
+        client = Client.query.filter_by(client_id=client_id).first()
+        if not client:
+            return False, "Client not found"
+
+        from urllib.parse import urlparse
+        try:
+            parsed_uri = urlparse(client.backchannel_logout_uri)
+            base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+        except Exception:
+            return False, "Invalid backchannel_logout_uri"
+
+        delete_api_url = f"{base_url.rstrip('/')}/api/sso-internal/delete-user"
+
+        try:
+            response = requests.post(
+                delete_api_url,
+                headers={"X-Client-Secret": client.client_secret, "Content-Type": "application/json"},
+                json={"email": email},
+                timeout=5
+            )
+            if response.status_code == 200:
+                return True, response.json()
+            else:
+                return False, f"App returned {response.status_code}: {response.text[:100]}"
+        except Exception as e:
+            return False, f"Connection error: {str(e)}"

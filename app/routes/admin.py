@@ -280,4 +280,13 @@ def api_sync_execute():
         else:
             return {"status": "error", "message": result}, 500
             
+    elif action == "delete_user":
+        success, result = SyncService.delete_remote_user(client_id, email)
+        if success:
+            from app.utils.logger import log_event
+            log_event("USER_DELETE_REMOTE", f"User {email} deleted from {client_id}.")
+            return {"status": "success", "message": f"Đã xoá {email} khỏi {client_id}"}, 200
+        else:
+            return {"status": "error", "message": result}, 500
+
     return {"status": "error", "message": "Unsupported action"}, 400

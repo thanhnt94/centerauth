@@ -138,7 +138,10 @@ def create_app(config_class=Config):
         if "user_id" in session:
             user = User.query.get(session["user_id"])
             if user:
-                apps = Client.query.filter_by(is_visible_on_portal=True, is_active=True).all()
+                apps = Client.query.filter(
+                    Client.is_visible_on_portal.in_([True, 1]),
+                    Client.is_active.in_([True, 1])
+                ).all()
                 return render_template("auth/success.html", user=user, apps=apps)
         return redirect(url_for("auth.login"))
 

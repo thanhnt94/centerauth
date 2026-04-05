@@ -3,140 +3,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Mindstack Ecosystem</title>
+    <title>Ecosystem Portal - Mindstack</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: "Inter", sans-serif; background: #f8fafc; color: #1e293b; -webkit-font-smoothing: antialiased; }
-        .nav-link { position: relative; }
-        .nav-link::after {
-            content: ''; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
-            background: #4f46e5; transition: width 0.3s ease;
-        }
-        .nav-link:hover::after { width: 100%; }
-        .app-card {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-        }
-        .app-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
-            border-color: #cbd5e1;
-        }
-        .bg-light-soft {
-            background-color: #ffffff;
+        body { 
+            font-family: "Inter", sans-serif; 
+            background: #fbfcfe;
             background-image: 
-                radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.03) 0px, transparent 50%),
-                radial-gradient(at 0% 100%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.05) 0px, transparent 50%);
+            min-height: 100vh;
+        }
+
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .premium-card {
+            background: white;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
+        }
+
+        .premium-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .icon-box {
+            transition: transform 0.3s ease;
+        }
+
+        .premium-card:hover .icon-box {
+            transform: rotate(-8deg) scale(1.1);
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Mobile Menu Animation */
+        #mobile-menu {
+            transition: all 0.3s ease-in-out;
+            max-height: 0;
+            overflow: hidden;
+        }
+        #mobile-menu.active {
+            max-height: 300px;
+            padding-bottom: 1.5rem;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide {
+            animation: slideIn 0.6s ease forwards;
+            opacity: 0;
         }
     </style>
 </head>
-<body class="min-h-screen bg-light-soft">
-
-    <!-- Full-Side Navigation -->
-    <nav class="w-full bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div class="px-6 h-16 flex items-center justify-between mx-auto">
-            <div class="flex items-center gap-6">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-200">
-                        <i class="fas fa-shield-halved text-sm"></i>
-                    </div>
-                    <span class="font-bold text-lg tracking-tight text-slate-900">Central Auth</span>
+<body class="pb-12">
+    <!-- Navigation Header -->
+    <nav class="glass-nav sticky top-0 z-50 px-4 md:px-8 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                    <i class="fas fa-shield-halved text-lg"></i>
                 </div>
-                
-                <div class="hidden md:flex items-center gap-6 ml-8">
-                    <a href="#" class="text-sm font-semibold text-indigo-600 nav-link">Trang chủ</a>
-                    <a href="#" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition nav-link">Tài liệu</a>
-                    <a href="#" class="text-sm font-medium text-slate-500 hover:text-slate-900 transition nav-link">Hỗ trợ</a>
-                </div>
+                <span class="text-xl font-extrabold text-slate-800 tracking-tight hidden sm:block">Central Auth</span>
             </div>
-            
-            <div class="flex items-center gap-5">
-                <div class="flex items-center gap-3 pr-4 border-r border-slate-100">
-                    <div class="text-right hidden sm:block">
-                        <div class="text-xs font-bold text-slate-900">{{ user.full_name }}</div>
-                        <div class="text-[10px] text-slate-400 font-medium">Sẵn sàng làm việc</div>
-                    </div>
-                    {% if user.avatar_url %}
-                    <img src="{{ user.avatar_url }}" class="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100">
-                    {% else %}
-                    <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200">
-                        {{ user.full_name[:1] | upper }}
-                    </div>
-                    {% endif %}
+
+            <!-- Desktop Links -->
+            <div class="hidden md:flex items-center gap-8">
+                <a href="#" class="text-sm font-semibold text-indigo-600">Trang chủ</a>
+                <a href="#" class="text-sm font-semibold text-slate-500 hover:text-indigo-600 transition">Tài liệu</a>
+                <a href="#" class="text-sm font-semibold text-slate-500 hover:text-indigo-600 transition">Hỗ trợ</a>
+            </div>
+
+            <!-- User Menu -->
+            <div class="flex items-center gap-4">
+                <div class="hidden sm:flex flex-col items-end mr-1">
+                    <span class="text-xs font-bold text-slate-900 leading-tight">{{ user.username }}</span>
+                    <span class="text-[10px] font-medium text-green-500">Trực tuyến</span>
+                </div>
+                <div class="relative group">
+                    <img src="https://ui-avatars.com/api/?name={{ user.username }}&background=6366f1&color=fff" 
+                         class="w-10 h-10 rounded-xl border-2 border-white shadow-sm ring-2 ring-indigo-50 cursor-pointer" alt="Avatar">
                 </div>
                 
-                <div class="flex items-center gap-2">
-                    {% if user.is_admin %}
-                    <a href="{{ url_for('admin.dashboard') }}" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-50 transition" title="Quản trị">
-                        <i class="fas fa-cog text-sm"></i>
-                    </a>
-                    {% endif %}
-                    <a href="{{ url_for('auth.logout') }}" class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition" title="Đăng xuất">
-                        <i class="fas fa-power-off text-sm"></i>
-                    </a>
-                </div>
+                <a href="{{ url_for('admin.dashboard') if user.is_admin else '#' }}" 
+                   class="p-2 text-slate-400 hover:text-indigo-600 transition {% if not user.is_admin %}hidden{% endif %}">
+                    <i class="fas fa-cog"></i>
+                </a>
+
+                <a href="{{ url_for('auth.logout') }}" class="p-2 text-slate-400 hover:text-rose-600 transition">
+                    <i class="fas fa-power-off"></i>
+                </a>
+
+                <!-- Mobile Menu Button -->
+                <button onclick="document.getElementById('mobile-menu').classList.toggle('active')" class="md:hidden p-2 text-slate-600">
+                    <i class="fas fa-bars-staggered"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Menu Panel -->
+        <div id="mobile-menu" class="md:hidden">
+            <div class="flex flex-col gap-4 pt-6">
+                <a href="#" class="text-sm font-bold text-indigo-600 bg-indigo-50 p-3 rounded-xl">Trang chủ</a>
+                <a href="#" class="text-sm font-semibold text-slate-600 p-3">Tài liệu</a>
+                <a href="#" class="text-sm font-semibold text-slate-600 p-3">Hỗ trợ</a>
             </div>
         </div>
     </nav>
 
-    <main class="w-full max-w-7xl mx-auto px-6 py-12 md:py-20">
-        <!-- Hero Section -->
-        <div class="mb-16">
-            <h1 class="text-4xl md:text-5xl font-extrabold text-slate-900 mb-4 tracking-tight leading-tight">
-                Xin chào, <span class="text-indigo-600">{{ user.full_name }}</span>.
+    <!-- Hero Section -->
+    <header class="max-w-7xl mx-auto px-4 md:px-8 pt-12 md:pt-20">
+        <div class="max-w-3xl animate-slide" style="animation-delay: 0.1s;">
+            <h1 class="text-4xl md:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.1] mb-6">
+                Xin chào, <span class="gradient-text">{{ user.username }}</span>.
             </h1>
-            <p class="text-slate-500 text-lg max-w-3xl leading-relaxed">
-                Chào mừng bạn quay lại hệ sinh thái Mindstack. Đây là trung tâm điều hòa dịch vụ của bạn. 
-                Vui lòng chọn một ứng dụng để bắt đầu phiên làm việc.
+            <p class="text-lg md:text-xl text-slate-500 font-medium leading-relaxed">
+                Chào mừng bạn quay lại hệ sinh thái <span class="font-bold text-slate-700">Mindstack</span>. Trung tâm điều phối dịch vụ của bạn đã sẵn sàng.
             </p>
         </div>
+    </header>
 
-        <!-- Project Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- App Grid -->
+    <main class="max-w-7xl mx-auto px-4 md:px-8 mt-12 md:mt-16">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
             {% for app in apps %}
-            <div class="app-card rounded-3xl p-8 flex flex-col group relative overflow-hidden">
-                <!-- App Icon -->
-                <div class="w-14 h-14 rounded-2xl bg-{{ app.app_color_theme }}-50 text-{{ app.app_color_theme }}-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                    <i class="{{ app.app_icon }} text-2xl"></i>
+            <div class="premium-card rounded-[2.5rem] p-8 flex flex-col h-full animate-slide" style="animation-delay: {{ loop.index * 0.1 }}s;">
+                <div class="icon-box w-14 h-14 rounded-2xl bg-{{ app.app_color_theme or 'indigo' }}-500/10 flex items-center justify-center text-{{ app.app_color_theme or 'indigo' }}-600 mb-8 border border-{{ app.app_color_theme or 'indigo' }}-500/10 shadow-inner">
+                    <i class="{{ app.app_icon or 'fas fa-rocket' }} text-2xl"></i>
                 </div>
                 
-                <h3 class="text-xl font-bold text-slate-900 mb-2">{{ app.name }}</h3>
-                <p class="text-slate-500 text-sm mb-8 leading-relaxed flex-grow">
-                    {{ app.app_description or "Chưa có mô tả cho ứng dụng này trong hệ sinh thái." }}
+                <h3 class="text-2xl font-extrabold text-slate-900 mb-3 tracking-tight">{{ app.name }}</h3>
+                <p class="text-slate-500 text-sm font-medium leading-relaxed mb-8">
+                    {{ app.app_description or "Ứng dụng thành viên trong hệ sinh thái của bạn đã sẵn sàng kết nối." }}
                 </p>
-                
-                {% set login_url = app.redirect_uri.replace('/auth-center/callback', '/auth-center/login') %}
-                
-                <a href="{{ login_url }}" class="flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200">
-                    Tiếp tục <i class="fas fa-arrow-right text-[10px] opacity-70"></i>
-                </a>
 
-                <!-- Background Subtle Hint -->
-                <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-{{ app.app_color_theme }}-500/5 rounded-full"></div>
+                <div class="mt-auto">
+                    <a href="{{ app.redirect_uri.split(',')[0] }}" 
+                       class="inline-flex items-center justify-center w-full py-4 px-6 rounded-2xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition shadow-lg shadow-slate-200">
+                        Tiếp tục ứng dụng
+                        <i class="fas fa-arrow-right ml-2 text-[10px] opacity-50"></i>
+                    </a>
+                </div>
             </div>
             {% else %}
-            <div class="col-span-full py-24 flex flex-col items-center justify-center bg-white border border-dashed border-slate-200 rounded-[2.5rem]">
-                <div class="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mb-4">
-                    <i class="fas fa-inbox text-slate-300 text-2xl"></i>
+            <!-- Empty State -->
+            <div class="col-span-full py-20 flex flex-col items-center justify-center text-center animate-slide">
+                <div class="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-slate-300 mb-6">
+                    <i class="fas fa-folder-open text-4xl"></i>
                 </div>
-                <p class="text-slate-400 font-medium text-lg italic">Đang chờ đăng ký ứng dụng...</p>
-                <p class="text-slate-300 text-sm mt-1">Truy cập Admin Panel để thiết lập Ecosystem Clients.</p>
+                <h3 class="text-2xl font-bold text-slate-800 mb-2">Chưa có ứng dụng nào</h3>
+                <p class="text-slate-500 font-medium">Vui lòng truy cập Admin Panel để thiết lập Ecosystem Clients.</p>
+                <a href="{{ url_for('admin.dashboard') }}" class="mt-8 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition">
+                    Cấu hình ngay
+                </a>
             </div>
             {% endfor %}
         </div>
-
-        <!-- Footer -->
-        <footer class="mt-32 pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 text-slate-400 text-xs">
-            <p>&copy; 2026 Mindstack Ecosystem. Built with Modular Monolith Architecture.</p>
-            <div class="flex gap-8 font-medium">
-                <a href="#" class="hover:text-indigo-600 transition">Hỗ trợ kỹ thuật</a>
-                <a href="#" class="hover:text-indigo-600 transition">Chính sách bảo mật</a>
-                <a href="#" class="hover:text-indigo-600 transition">GitHub</a>
-            </div>
-        </footer>
     </main>
+
+    <!-- Footer -->
+    <footer class="max-w-7xl mx-auto px-4 md:px-8 mt-24 py-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 text-slate-400 text-xs font-medium">
+        <p>&copy; 2026 Mindstack Ecosystem. Modular Monolith Architecture.</p>
+        <div class="flex gap-8">
+            <a href="#" class="hover:text-indigo-600 transition">HỖ TRỢ</a>
+            <a href="#" class="hover:text-indigo-600 transition">BẢO MẬT</a>
+            <a href="#" class="hover:text-indigo-600 transition">GITHUB</a>
+        </div>
+    </footer>
 </body>
 </html>

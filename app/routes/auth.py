@@ -150,7 +150,8 @@ def login():
         tokens = JWTService.generate_token_pair(user)
         return jsonify({**tokens, "user": user.to_dict()}), 200
 
-    return render_template("auth/success.html", user=user)
+    # Redirect to index to ensure apps are loaded via the portal logic
+    return redirect(url_for("index"))
 
 @auth_bp.route("/token", methods=["POST"])
 @cross_origin()

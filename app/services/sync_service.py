@@ -42,7 +42,8 @@ class SyncService:
         
         # Try multiple common patterns to find the sync API
         possible_paths = [
-            "/auth-center/api/sso/internal/user-list", # MindStack standard
+            "/api/sso-internal/user-list",            # New Root Standard (Most reliable)
+            "/auth-center/api/sso/internal/user-list", # MindStack legacy
             "/api/sso/internal/user-list",            # Generic standard
             "/auth-center/internal/user-list",        # PodLearn standard
             "/auth/api/sso/internal/user-list"        # IPTV standard

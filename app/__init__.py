@@ -57,7 +57,8 @@ def create_app(config_class=Config):
             db.session.commit()
 
         # 3. Seed Default Clients (Ecosystem Apps)
-        # UPDATED: Using the standardized /auth-center/callback format
+        # NOTE: Only INSERT if client doesn't exist. Never overwrite existing config
+        # so that admin changes (redirect_uri, webhook, secrets) are preserved across restarts.
         clients_data = [
             {
                 "client_id": "mindstack-v3",
@@ -76,7 +77,7 @@ def create_app(config_class=Config):
                 "client_secret": "podlearn-secret-key-456",
                 "name": "PodLearn",
                 "redirect_uri": "http://127.0.0.1:5020/auth-center/callback",
-                "backchannel_logout_uri": "http://127.0.0.1:5020/auth-center/webhook/backchannel-logout",
+                "backchannel_logout_uri": "http://127.0.0.1:5020/auth-center/backchannel-logout",
                 "app_icon": "fas fa-user-graduate",
                 "app_description": "Học ngoại ngữ qua video trực quan từ YouTube.",
                 "app_color_theme": "emerald",
@@ -95,32 +96,17 @@ def create_app(config_class=Config):
                 "is_active": True,
                 "is_visible_on_portal": True
             },
-            {
-                "client_id": "watchtogether-v1",
-                "client_secret": "watchtogether-secret-777",
-                "name": "Watch Together",
-                "redirect_uri": "http://127.0.0.1:5040/auth-center/callback",
-                "backchannel_logout_uri": "http://127.0.0.1:5040/auth-center/webhook/backchannel-logout",
-                "app_icon": "fas fa-film",
-                "app_description": "Xem phim và video cùng bạn bè trực tuyến.",
-                "app_color_theme": "rose",
-                "is_active": True,
-                "is_visible_on_portal": True
-            }
         ]
+        clients_seeded = False
         for cd in clients_data:
             existing_client = Client.query.filter_by(client_id=cd["client_id"]).first()
             if not existing_client:
                 new_client = Client(**cd)
                 db.session.add(new_client)
-            else:
-                # Update existing client with new standardized callback, logout and secret for ecosystem alignment
-                existing_client.client_secret = cd["client_secret"]
-                existing_client.redirect_uri = cd["redirect_uri"]
-                existing_client.backchannel_logout_uri = cd["backchannel_logout_uri"]
-                existing_client.is_active = True
-                existing_client.is_visible_on_portal = True
-        db.session.commit()
+                clients_seeded = True
+                app.logger.info(f"Seeded new client: {cd['client_id']}")
+        if clients_seeded:
+            db.session.commit()
 
     # Register blueprints
     from app.routes.auth import auth_bp

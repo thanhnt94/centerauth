@@ -109,7 +109,7 @@ def login():
             user = User.query.get(session["user_id"])
             if user and user.is_active:
                 if client and return_to:
-                    # Authorization Code Flow: Generate code instead of token
+                    # User is already logged in, so just generate a new code and go back to the app
                     auth_code = AuthCode(user_id=user.id, client_id=client_id, redirect_uri=return_to)
                     db.session.add(auth_code)
                     db.session.commit()
@@ -117,7 +117,10 @@ def login():
                     separator = "&" if "?" in return_to else "?"
                     return redirect(f"{return_to}{separator}code={auth_code.code}")
                 
+                # If no client, they are just exploring the auth portal
                 return redirect(url_for("index"))
+        
+        # Only show login if no valid session or user inactive
         return render_template("auth/login.html")
 
     # Handle Login Submission

@@ -222,6 +222,47 @@ def ping_client(id):
             return {"status": "online", "message": f"Verified via {base_url} (Redirect followed)"}
             
         return {"status": "offline", "message": msg}
-        
+            
     except Exception as e:
         return {"status": "offline", "message": str(e)}
+
+# --- User Synchronization Routes ---
+
+@admin_bp.route("/sync")
+def sync_dashboard():
+    """Renders the User Synchronization Dashboard."""
+    return render_template("admin/sync_dashboard.html")
+
+@admin_bp.route("/api/sync/scan")
+def api_sync_scan():
+    """Performs a full ecosystem user scan and returns the report as JSON."""
+    from app.services.sync_service import SyncService
+    try:
+        report = SyncService.get_sync_report()
+        return {"status": "success", "report": report}, 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+@admin_bp.route("/api/sync/execute", methods=["POST"])
+def api_sync_execute():
+    """Executes a specific sync action (e.g., Reverse Sync)."""
+    from app.services.sync_service import SyncService
+    data = request.get_json()
+    
+    action = data.get("action")
+    client_id = data.get("client_id")
+    email = data.get("email")
+    
+    if not all([action, client_id, email]):
+        return {"status": "error", "message": "Missing required parameters"}, 400
+        
+    if action == "reverse_sync":
+        success, result = SyncService.reverse_sync_user(client_id, email)
+        if success:
+            from app.utils.logger import log_event
+            log_event("USER_SYNC_REVERSE", f"User {email} synced from {client_id} to CentralAuth.")
+            return {"status": "success", "message": f"User {email} synced successfully", "data": result}, 200
+        else:
+            return {"status": "error", "message": result}, 500
+            
+    return {"status": "error", "message": "Unsupported action"}, 400

@@ -30,9 +30,9 @@ def create_app(config_class=Config):
         db.create_all()
         
         # 1. Seed Admin user if not exists
-        admin_user = User.query.filter_by(username='thanhnt').first()
+        admin_user = User.query.filter_by(username='admin').first()
         if not admin_user:
-            admin_user = User(username='thanhnt', email='thanhnt94@gmail.com', full_name='System Admin', is_admin=True)
+            admin_user = User(username='admin', email='admin@example.com', full_name='System Admin', is_admin=True)
             admin_user.set_password('admin')
             db.session.add(admin_user)
             db.session.commit()
@@ -56,71 +56,9 @@ def create_app(config_class=Config):
         if settings_created:
             db.session.commit()
 
-        # 3. Seed Default Clients (Ecosystem Apps)
-        # UPDATED: Using the standardized /auth-center/callback format
-        clients_data = [
-            {
-                "client_id": "mindstack-v3",
-                "client_secret": "mindstack-secret-key-123",
-                "name": "MindStack",
-                "redirect_uri": "http://127.0.0.1:5010/auth-center/callback",
-                "backchannel_logout_uri": "http://127.0.0.1:5010/auth-center/backchannel-logout",
-                "app_icon": "fas fa-brain",
-                "app_description": "Hệ thống quản lý kiến thức và học tập thông minh dựa trên SRS.",
-                "app_color_theme": "indigo",
-                "is_active": True,
-                "is_visible_on_portal": True
-            },
-            {
-                "client_id": "podlearn-v1",
-                "client_secret": "podlearn-secret-key-456",
-                "name": "PodLearn",
-                "redirect_uri": "http://127.0.0.1:5020/auth-center/callback",
-                "backchannel_logout_uri": "http://127.0.0.1:5020/auth-center/webhook/backchannel-logout",
-                "app_icon": "fas fa-user-graduate",
-                "app_description": "Học ngoại ngữ qua video trực quan từ YouTube.",
-                "app_color_theme": "emerald",
-                "is_active": True,
-                "is_visible_on_portal": True
-            },
-            {
-                "client_id": "iptv-manager",
-                "client_secret": "iptv-secret-key-789",
-                "name": "IPTV Manager",
-                "redirect_uri": "http://127.0.0.1:5030/auth-center/callback",
-                "backchannel_logout_uri": "http://127.0.0.1:5030/auth-center/backchannel-logout",
-                "app_icon": "fas fa-tv",
-                "app_description": "Quản lý nguồn phát truyền hình trực tuyến thông minh.",
-                "app_color_theme": "amber",
-                "is_active": True,
-                "is_visible_on_portal": True
-            },
-            {
-                "client_id": "watchtogether-v1",
-                "client_secret": "watchtogether-secret-777",
-                "name": "Watch Together",
-                "redirect_uri": "http://127.0.0.1:5040/auth-center/callback",
-                "backchannel_logout_uri": "http://127.0.0.1:5040/auth-center/webhook/backchannel-logout",
-                "app_icon": "fas fa-film",
-                "app_description": "Xem phim và video cùng bạn bè trực tuyến.",
-                "app_color_theme": "rose",
-                "is_active": True,
-                "is_visible_on_portal": True
-            }
-        ]
-        for cd in clients_data:
-            existing_client = Client.query.filter_by(client_id=cd["client_id"]).first()
-            if not existing_client:
-                new_client = Client(**cd)
-                db.session.add(new_client)
-            else:
-                # Update existing client with new standardized callback, logout and secret for ecosystem alignment
-                existing_client.client_secret = cd["client_secret"]
-                existing_client.redirect_uri = cd["redirect_uri"]
-                existing_client.backchannel_logout_uri = cd["backchannel_logout_uri"]
-                existing_client.is_active = True
-                existing_client.is_visible_on_portal = True
-        db.session.commit()
+        # 3. Default Clients Seeding Disabled (As per user request for a cleaner DB)
+        # You can add clients manually via the Admin Dashboard.
+        pass
 
     # Register blueprints
     from app.routes.auth import auth_bp

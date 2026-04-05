@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đồng bộ người dùng - Central Auth Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: "Inter", sans-serif; background-color: #f8fafc; }
+        .data-card { background: white; border-radius: 0.75rem; border: 1px solid #e2e8f0; }
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="min-h-screen">
+    <nav class="bg-indigo-700 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-shield-alt text-xl"></i>
+                <span class="font-bold tracking-tight">Central Auth Admin</span>
+            </div>
+            <div class="flex items-center gap-6 text-sm font-medium">
+                <a href="{{ url_for('admin.dashboard') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-cubes opacity-70"></i> Clients
+                </a>
+                <a href="{{ url_for('admin.users') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-users opacity-70"></i> Users
+                </a>
+                <a href="{{ url_for('admin.sync_dashboard') }}" class="text-white border-b-2 border-white pb-1 flex items-center gap-2">
+                    <i class="fas fa-sync opacity-70"></i> Sync <span class="bg-rose-500 text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">New</span>
+                </a>
+                <a href="{{ url_for('admin.logs') }}" class="hover:text-indigo-200 transition flex items-center gap-2">
+                    <i class="fas fa-history opacity-70"></i> Logs
+                </a>
+                <a href="{{ url_for('index') }}" class="hover:text-indigo-200 transition ml-4">
+                    <i class="fas fa-home opacity-70"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-6 md:p-8">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">Đồng bộ Hệ sinh thái</h1>
+                <p class="text-slate-500 text-sm mt-1">Quét và so khớp dữ liệu người dùng giữa CentralAuth và các ứng dụng vệ tinh.</p>
+            </div>
+            <button onclick="runScan()" id="scanBtn"
+                class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-200 active:scale-95">
+                <i class="fas fa-search" id="scanIcon"></i> Bắt đầu Quét toàn hệ thống
+            </button>
+        </div>
+
+        <!-- System Status Bar -->
+        <div id="statusSection" class="hidden mb-8 grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+            <!-- Stats will be injected here -->
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="space-y-8">
+            <div class="text-center py-20 text-slate-400 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-satellite-dish text-3xl opacity-20"></i>
+                </div>
+                <p class="text-lg font-medium">Chưa có dữ liệu quét</p>
+                <p class="text-sm">Nhấn nút "Bắt đầu Quét" để kiểm tra sự khác biệt giữa các hệ thống.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Sync Confirmation Modal -->
+    <div id="syncModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div class="p-6 text-center">
+                <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-exchange-alt text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-900 mb-2">Xác nhận Đồng bộ ngược</h3>
+                <p class="text-slate-500 text-sm mb-6">
+                    Hệ thống sẽ tạo tài khoản cho <span id="syncEmail" class="font-bold text-slate-900"></span> tại CentralAuth. 
+                    Mật khẩu sẽ được khởi tạo ngẫu nhiên và người dùng cần reset lại.
+                </p>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="closeModal()" class="flex-1 px-4 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition">Hủy</button>
+                    <button id="confirmSyncBtn" class="flex-1 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100">Xác nhận Sync</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentReport = null;
+
+        async function runScan() {
+            const btn = document.getElementById('scanBtn');
+            const icon = document.getElementById('scanIcon');
+            const results = document.getElementById('resultsSection');
+            const status = document.getElementById('statusSection');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+            icon.classList.add('animate-spin');
+            results.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-20 animate-pulse">
+                    <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p class="text-slate-500 font-medium">Đang truy vấn dữ liệu từ các vệ tinh...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/admin/api/sync/scan');
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    currentReport = data.report;
+                    renderReport(data.report);
+                } else {
+                    results.innerHTML = `<div class="p-8 text-center text-rose-500 font-medium">Lỗi: ${data.message}</div>`;
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="p-8 text-center text-rose-500 font-medium">Lỗi kết nối: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                icon.classList.remove('animate-spin');
+            }
+        }
+
+        function renderReport(report) {
+            const results = document.getElementById('resultsSection');
+            const status = document.getElementById('statusSection');
+            results.innerHTML = '';
+            status.innerHTML = '';
+            status.classList.remove('hidden');
+
+            let totalOrphans = 0;
+            let totalMissingLinks = 0;
+            let totalClients = 0;
+
+            for (const [clientId, stats] of Object.entries(report)) {
+                totalClients++;
+                
+                if (stats.error) {
+                    results.innerHTML += `
+                        <div class="data-card p-6 border-rose-200 bg-rose-50/30">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    </div>
+                                    <h2 class="font-bold text-slate-900">${clientId}</h2>
+                                </div>
+                                <span class="text-xs font-bold text-rose-500 uppercase">Lỗi kết nối API</span>
+                            </div>
+                            <p class="text-sm text-rose-600 mt-3 font-mono">${stats.error}</p>
+                        </div>
+                    `;
+                    continue;
+                }
+
+                totalOrphans += stats.orphans_local.length;
+                totalMissingLinks += stats.missing_links.length;
+
+                const clientCard = document.createElement('div');
+                clientCard.className = 'data-card overflow-hidden';
+                
+                let rowsHtml = '';
+                
+                // Render Orphans (Pull candidates)
+                stats.orphans_local.forEach(user => {
+                    rowsHtml += `
+                        <tr class="hover:bg-amber-50/50 transition">
+                            <td class="px-6 py-4">
+                                <div class="font-semibold text-slate-800">${user.username}</div>
+                                <div class="text-xs text-slate-400">${user.email}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Chỉ có ở App con</span>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <button onclick="confirmSync('${clientId}', '${user.email}')" 
+                                    class="text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ml-auto">
+                                    <i class="fas fa-file-import"></i> Sync về Central
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                // Render Missing Links
+                stats.missing_links.forEach(user => {
+                    rowsHtml += `
+                        <tr class="hover:bg-indigo-50/50 transition">
+                            <td class="px-6 py-4">
+                                <div class="font-semibold text-slate-800">${user.username}</div>
+                                <div class="text-xs text-slate-400">${user.email}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Chưa liên kết ID</span>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <button onclick="linkUser('${clientId}', '${user.email}', '${user.ca_id_suggestion}')" 
+                                    class="text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ml-auto">
+                                    <i class="fas fa-link"></i> Khớp ID ngay
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                clientCard.innerHTML = `
+                    <div class="p-6 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                                ${clientId.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-900">${clientId}</h3>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${stats.matching} / ${stats.total} Khớp hoàn toàn</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                             ${stats.orphans_local.length > 0 ? `<span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">${stats.orphans_local.length} Cần đồng bộ</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <tbody class="divide-y divide-slate-100">
+                                ${rowsHtml || '<tr><td colspan="3" class="px-6 py-8 text-center text-slate-400 text-sm">Hệ thống đã đồng bộ hoàn toàn.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                results.appendChild(clientCard);
+            }
+
+            // Sync Summary
+            status.innerHTML = `
+                <div class="data-card p-4 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-xl">
+                        <i class="fas fa-plug"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-black text-slate-900">${totalClients}</div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ứng dụng vệ tinh</div>
+                    </div>
+                </div>
+                <div class="data-card p-4 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center text-xl">
+                        <i class="fas fa-ghost"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-black text-slate-900">${totalOrphans}</div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tài khoản chưa có trên Central</div>
+                    </div>
+                </div>
+                <div class="data-card p-4 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-xl">
+                        <i class="fas fa-check-double"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-black text-slate-900">${totalMissingLinks}</div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cần liên kết ID</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function confirmSync(clientId, email) {
+            document.getElementById('syncEmail').innerText = email;
+            document.getElementById('syncModal').classList.remove('hidden');
+            
+            const confirmBtn = document.getElementById('confirmSyncBtn');
+            confirmBtn.onclick = async () => {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner animate-spin"></i> Đang xử lý...';
+                
+                try {
+                    const response = await fetch('/admin/api/sync/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'reverse_sync', client_id: clientId, email: email })
+                    });
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        alert(`Đã sync thành công!\nUser: ${email}\nPass tạm: ${data.data.temp_password}`);
+                        closeModal();
+                        runScan(); // Refresh
+                    } else {
+                        alert('Lỗi: ' + data.message);
+                    }
+                } catch (e) {
+                    alert('Lỗi kết nối: ' + e.message);
+                } finally {
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerText = 'Xác nhận Sync';
+                }
+            };
+        }
+
+        function closeModal() {
+            document.getElementById('syncModal').classList.add('hidden');
+        }
+
+        // Feature placeholder
+        function linkUser(client, email, id) {
+            alert('Chức năng Link ID tự động sẽ được triển khai trong bản cập nhật sau. Hiện tại bạn có thể thực hiện Reverse Sync để đảm bảo dữ liệu khớp nhất.');
+        }
+    </script>
+</body>
+</html>

@@ -3,11 +3,15 @@ import jwt
 import time
 from flask import current_app
 from typing import Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 
 class WebhookService:
     """
     Handles asynchronous notifications specifically for Single Sign-Out events.
+    Uses a ThreadPoolExecutor to ensure webhooks don't block the main application flow.
     """
+    
+    _executor = ThreadPoolExecutor(max_workers=10)
 
     @staticmethod
     def send_logout_notification(logout_uri: str, user_id: str, client: Any) -> bool:
@@ -35,23 +39,25 @@ class WebhookService:
         
         logout_token = jwt.encode(logout_payload, secret, algorithm='HS256')
 
-        try:
-            # Send the request with a reasonable timeout
-            response = requests.post(
-                logout_uri,
-                json={"logout_token": logout_token},
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                current_app.logger.info(f"Logout notification successful for {client.client_id}")
-                return True
-            else:
-                current_app.logger.warning(f"Logout notification failed for {client.client_id}: {response.status_code}")
-                return False
-        except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"Error sending logout notification to {client.client_id}: {e}")
-            return False
+        def _do_post():
+            try:
+                # Send the request with a reasonable timeout
+                response = requests.post(
+                    logout_uri,
+                    json={"logout_token": logout_token},
+                    timeout=5
+                )
+                
+                if response.status_code == 200:
+                    print(f"Logout notification successful for {client.client_id}")
+                else:
+                    print(f"Logout notification failed for {client.client_id}: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                print(f"Error sending logout notification to {client.client_id}: {e}")
+
+        # Dispatch to background thread
+        WebhookService._executor.submit(_do_post)
+        return True
 
     @staticmethod
     def notify_all_active_sessions(user_id: str):
@@ -66,7 +72,7 @@ class WebhookService:
         for session in sessions:
             client = Client.query.filter_by(client_id=session.client_id).first()
             if client and client.backchannel_logout_uri:
-                # Trigger the notification
+                # Trigger the notification (now backgrounds automatically)
                 WebhookService.send_logout_notification(
                     client.backchannel_logout_uri,
                     user_id,

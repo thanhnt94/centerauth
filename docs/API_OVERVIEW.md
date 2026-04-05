@@ -1,88 +1,82 @@
-# Tài liệu API (API Overview)
+# CentralAuth API Documentation (V2 - Official)
 
-Hệ thống **CentralAuth** cung cấp các API endpoints để thực hiện đăng ký, đăng nhập và xác thực người dùng.
+Hệ thống **CentralAuth** cung cấp các API endpoints để thực hiện xác thực tập trung theo giao thức OAuth2/OIDC. Toàn bộ các tương tác đều thông qua giao thức HTTPS (khuyên dùng) và JSON Web Tokens (JWT).
 
-## Xác thực (Authentication)
+## Discovery (Tự cấu hình)
 
-### 1. Đăng ký người dùng
-- **Endpoint**: `/api/auth/register`
-- **Phương thức**: `POST`
-- **Dữ liệu gửi lên (JSON)**:
-  ```json
-  {
-    "username": "your_username",
-    "email": "user@example.com",
-    "password": "your_password",
-    "full_name": "Full Name"
-  }
-  ```
-- **Phản hồi thành công (201 Created)**:
-  ```json
-  {
-    "message": "User registered successfully",
-    "id": "uuid-of-user"
-  }
-  ```
-- **Phản hồi lỗi (409 Conflict)**: Email hoặc Username đã tồn tại.
+Các ứng dụng con nên sử dụng endpoint này để tự động lấy cấu hình các đầu cuối (endpoints) mà không cần cấu hình thủ công từng URL.
 
-### 2. Đăng nhập
-- **Endpoint**: `/api/auth/login`
-- **Phương thức**: `POST` (hoặc `GET` để hiển thị trang login UI)
-- **Tham số tùy chọn (Query String)**: `return_to` (URL để chuyển hướng quay lại sau đăng nhập).
-- **Dữ liệu gửi lên (JSON cho API)**:
-  ```json
-  {
-    "username": "your_username_or_email",
-    "password": "your_password"
-  }
-  ```
-- **Phản hồi thành công (200 OK)**:
-  ```json
-  {
-    "access_token": "jwt-token-here",
-    "user": {
-      "id": "uuid",
-      "username": "...",
-      "email": "...",
-      "full_name": "...",
-      "avatar_url": "...",
-      "is_active": true,
-      "created_at": "..."
-    }
-  }
-  ```
-- **Chuyển hướng (nếu có `return_to`)**: Sau khi đăng nhập thành công, trình duyệt sẽ được chuyển hướng tới `return_to?token=...&user_id=...`.
-
-### 3. Xác thực Token
-- **Endpoint**: `/api/auth/verify-token`
+- **Endpoint**: `/api/auth/discovery`
 - **Phương thức**: `GET`
-- **Header bắt buộc**: `Authorization: Bearer <jwt-token>`
+- **Mô tả**: Trả về danh sách các URL cần thiết cho luồng đăng nhập, lấy token và xác thực.
+
+---
+
+## Luồng Xác thực (Authentication Flow)
+
+### 1. Đăng nhập (UI Flow)
+- **Endpoint**: `/api/auth/login`
+- **Phương thức**: `GET`
+- **Tham số bắt buộc**:
+  - `client_id`: ID của ứng dụng con (đăng ký trong Admin).
+  - `return_to`: URL sẽ chuyển hướng về sau khi đăng nhập thành công.
+- **Mô tả**: Hiển thị trang đăng nhập. Nếu đăng nhập thành công, CentralAuth sẽ chuyển hướng về `return_to?code=AUTH_CODE`.
+
+### 2. Đổi mã lấy Token (Server-to-Server)
+- **Endpoint**: `/api/auth/token`
+- **Phương thức**: `POST` (JSON body)
+- **Dữ liệu gửi lên**:
+  ```json
+  {
+    "code": "AUTH_CODE_TU_BUOC_1",
+    "client_id": "CLIENT_ID_CUA_BAN",
+    "client_secret": "CLIENT_SECRET_CUA_BAN"
+  }
+  ```
 - **Phản hồi thành công (200 OK)**:
   ```json
   {
-    "status": "success",
-    "user": {
-      "id": "uuid",
-      "username": "...",
-      "email": "...",
-      "full_name": "...",
-      "avatar_url": "...",
-      "is_active": true,
-      "created_at": "..."
-    }
+    "access_token": "jwt-access-token",
+    "refresh_token": "jwt-refresh-token",
+    "expires_in": 3600
   }
   ```
-- **Phản hồi lỗi (401 Unauthorized)**: Token hết hạn hoặc không hợp lệ.
+
+### 3. Làm mới Token (Refresh Token)
+- **Endpoint**: `/api/auth/refresh`
+- **Phương thức**: `POST`
+- **Dữ liệu gửi lên**: `{"refresh_token": "..."}`
+- **Phản hồi**: Trả về cặp token mới (Token Rotation).
+
+---
+
+## Xác thực & Quản lý (Resource Access)
+
+### 1. Xác thực Token (Token Validation)
+- **Endpoint**: `/api/auth/verify-token`
+- **Header**: `Authorization: Bearer <access_token>`
+- **Phương thức**: `GET`
+- **Phản hồi thành công**: Thông tin `user` (profile).
+
+### 2. Đăng xuất Toàn cầu (Global Logout/SLO)
+- **Endpoint**: `/api/auth/logout`
+- **Header**: `Authorization: Bearer <access_token>` (Hoặc qua Session browser)
+- **Phương thức**: `POST` hoặc `GET`
+- **Mô tả**: Hủy session tại CentralAuth, đưa JWT vào danh sách đen (Blacklist) và gửi Webhook tới toàn bộ các ứng dụng con mà người dùng đang đăng nhập.
+
+---
 
 ## Các chức năng khác
 
 ### Health Check
 - **Endpoint**: `/api/auth/health`
 - **Phương thức**: `GET`
-- **Mô tả**: Kiểm tra trạng thái hoạt động của hệ thống Auth.
+- **Phản hồi**: `{"status": "ok"}`
 
-### Quản trị Client (Admin)
-- **Endpoint**: `/admin/`
-- **Phương thức**: `GET`
-- **Mô tả**: Trang dashboard quản trị danh sách các client ứng dụng (Giao diện HTML).
-- **Tạo Client mới**: `/admin/clients/add` (`POST` qua Form).
+### Đăng ký người dùng
+- **Endpoint**: `/api/auth/register` (Nếu được bật)
+- **Phương thức**: `POST`
+- **Dữ liệu**: `username`, `email`, `password`, `full_name`.
+
+---
+*Cập nhật lần cuối: 2026-04-05*

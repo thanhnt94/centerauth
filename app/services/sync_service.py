@@ -30,25 +30,28 @@ class SyncService:
         # We'll use a heuristic or just assume the new standard we just added
         # New standard is /api/sso/internal/user-list relative to the app base
         
-        base_url = client.backchannel_logout_uri.split('/auth-center/')[0]
-        if '/api/sso/' in client.backchannel_logout_uri:
-             base_url = client.backchannel_logout_uri.split('/api/sso/')[0]
-        if '/webhook/' in client.backchannel_logout_uri:
-             base_url = client.backchannel_logout_uri.split('/webhook/')[0]
+        from urllib.parse import urlparse
+        
+        try:
+            parsed_uri = urlparse(client.backchannel_logout_uri)
+            base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+        except Exception:
+            return {"error": "Invalid backchannel_logout_uri"}
              
         base_url = base_url.rstrip('/')
         
         # Try multiple common patterns to find the sync API
         possible_paths = [
-            "/api/sso/internal/user-list",
-            "/auth-center/api/sso/internal/user-list",
-            "/auth-center/internal/user-list",
-            "/auth/api/sso/internal/user-list"
+            "/auth-center/api/sso/internal/user-list", # MindStack standard
+            "/api/sso/internal/user-list",            # Generic standard
+            "/auth-center/internal/user-list",        # PodLearn standard
+            "/auth/api/sso/internal/user-list"        # IPTV standard
         ]
 
-        last_error = "No API respond"
+        attempts = []
         for path in possible_paths:
             api_url = f"{base_url}{path}"
+            attempts.append(api_url)
             try:
                 response = requests.post(
                     api_url,
@@ -58,12 +61,13 @@ class SyncService:
                 if response.status_code == 200:
                     return response.json().get("users", [])
                 elif response.status_code == 401:
-                    return {"error": "Unauthorized (Invalid Secret)"}
-                last_error = f"API Error {response.status_code} at {path}"
+                    return {"error": f"Unauthorized (Invalid Secret) at {path}"}
+                # If 404, we continue to next path
             except Exception as e:
-                last_error = str(e)
+                # If timeout or connection error, we might want to stop or continue
+                pass
         
-        return {"error": last_error}
+        return {"error": f"API 404 - Checked {len(attempts)} paths. Last: {attempts[-1]}"}
 
     @staticmethod
     def get_sync_report():

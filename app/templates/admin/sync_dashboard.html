@@ -306,9 +306,30 @@
             document.getElementById('syncModal').classList.add('hidden');
         }
 
-        // Feature placeholder
-        function linkUser(client, email, id) {
-            alert('Chức năng Link ID tự động sẽ được triển khai trong bản cập nhật sau. Hiện tại bạn có thể thực hiện Reverse Sync để đảm bảo dữ liệu khớp nhất.');
+        async function linkUser(clientId, email, caId) {
+            if (!caId || caId === 'undefined' || caId === 'null') {
+                alert('❌ Không tìm thấy ID CentralAuth cho user này. Hãy "Sync về Central" trước.');
+                return;
+            }
+            if (!confirm(`Khớp ID cho ${email} với CentralAuth ID:\n${caId}?`)) return;
+            
+            try {
+                const response = await fetch('/admin/api/sync/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'link_user', client_id: clientId, email: email, central_auth_id: String(caId) })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    alert(`✅ ${data.message}`);
+                    runScan(); // Refresh
+                } else {
+                    alert('❌ Lỗi: ' + data.message);
+                }
+            } catch (e) {
+                alert('Lỗi kết nối: ' + e.message);
+            }
         }
     </script>
 </body>

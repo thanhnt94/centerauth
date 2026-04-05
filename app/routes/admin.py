@@ -264,5 +264,20 @@ def api_sync_execute():
             return {"status": "success", "message": f"User {email} synced successfully", "data": result}, 200
         else:
             return {"status": "error", "message": result}, 500
+    
+    elif action == "link_user":
+        ca_id = data.get("central_auth_id")
+        import sys
+        print(f"[LINK-DEBUG] Full data received: {data}", file=sys.stderr, flush=True)
+        print(f"[LINK-DEBUG] ca_id = '{ca_id}' (type={type(ca_id).__name__})", file=sys.stderr, flush=True)
+        if not ca_id:
+            return {"status": "error", "message": "Missing central_auth_id"}, 400
+        success, result = SyncService.link_user(client_id, email, ca_id)
+        if success:
+            from app.utils.logger import log_event
+            log_event("USER_LINK", f"User {email} linked to CA ID {ca_id} in {client_id}.")
+            return {"status": "success", "message": f"User {email} linked successfully"}, 200
+        else:
+            return {"status": "error", "message": result}, 500
             
     return {"status": "error", "message": "Unsupported action"}, 400

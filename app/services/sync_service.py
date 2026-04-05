@@ -39,36 +39,33 @@ class SyncService:
             return {"error": "Invalid backchannel_logout_uri"}
              
         base_url = base_url.rstrip('/')
+        # Use the Standardized Internal Sync API path for all applications
+        sync_api_url = f"{base_url.rstrip('/')}/api/sso-internal/user-list"
         
-        # Try multiple common patterns to find the sync API
-        possible_paths = [
-            "/api/sso-internal/user-list",            # New Root Standard (Most reliable)
-            "/auth-center/api/sso/internal/user-list", # MindStack legacy
-            "/api/sso/internal/user-list",            # Generic standard
-            "/auth-center/internal/user-list",        # PodLearn standard
-            "/auth/api/sso/internal/user-list"        # IPTV standard
-        ]
+        import sys
+        sys.stderr.write(f"[SYNC] {client.client_id} -> {sync_api_url} (secret={client.client_secret})\n")
+        sys.stderr.flush()
+        
+        try:
+            response = requests.post(
+                sync_api_url,
+                headers={"X-Client-Secret": client.client_secret},
+                timeout=5
+            )
+            sys.stderr.write(f"[SYNC] {client.client_id} <- status={response.status_code} body={response.text[:200]}\n")
+            sys.stderr.flush()
 
-        attempts = []
-        for path in possible_paths:
-            api_url = f"{base_url}{path}"
-            attempts.append(api_url)
-            try:
-                response = requests.post(
-                    api_url,
-                    headers={"X-Client-Secret": client.client_secret},
-                    timeout=5
-                )
-                if response.status_code == 200:
+            if response.status_code == 200:
+                try:
                     return response.json().get("users", [])
-                elif response.status_code == 401:
-                    return {"error": f"Unauthorized (Invalid Secret) at {path}"}
-                # If 404, we continue to next path
-            except Exception as e:
-                # If timeout or connection error, we might want to stop or continue
-                pass
-        
-        return {"error": f"API 404 - Checked {len(attempts)} paths. Last: {attempts[-1]}"}
+                except Exception as json_err:
+                    return {"error": f"JSON Parse Error: {str(json_err)} | Body: {response.text[:100]}"}
+            elif response.status_code == 401:
+                return {"error": f"Unauthorized (Invalid Secret) at {sync_api_url}"}
+            else:
+                return {"error": f"API returned status {response.status_code} | Body: {response.text[:100]}"}
+        except Exception as e:
+            return {"error": f"Connection error: {str(e)}"}
 
     @staticmethod
     def get_sync_report():
@@ -100,7 +97,7 @@ class SyncService:
                 
                 if not ca_user:
                     stats["orphans_local"].append(cu)
-                elif not cu.get("central_auth_id") or cu["central_auth_id"] != ca_user.id:
+                elif not cu.get("central_auth_id") or str(cu["central_auth_id"]) != str(ca_user.id):
                     cu["ca_id_suggestion"] = ca_user.id
                     stats["missing_links"].append(cu)
                 else:
@@ -145,3 +142,49 @@ class SyncService:
         db.session.commit()
         
         return True, {"id": new_user.id, "temp_password": temp_pass}
+
+    @staticmethod
+    def link_user(client_id: str, email: str, central_auth_id: int):
+        """
+        Sends a request to a satellite app to update a user's central_auth_id.
+        This links the local user to their CentralAuth identity.
+        """
+        client = Client.query.filter_by(client_id=client_id).first()
+        if not client:
+            return False, "Client not found"
+
+        from urllib.parse import urlparse
+        try:
+            parsed_uri = urlparse(client.backchannel_logout_uri)
+            base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+        except Exception:
+            return False, "Invalid backchannel_logout_uri"
+
+        link_api_url = f"{base_url.rstrip('/')}/api/sso-internal/link-user"
+        
+        # Ensure central_auth_id is treated as a string for UUID comparison
+        ca_id_str = str(central_auth_id)
+        
+        # Fetch user details from CentralAuth to sync profile
+        ca_user = User.query.filter_by(id=ca_id_str).first()
+        if not ca_user:
+            return False, f"CentralAuth: No user found with ID '{ca_id_str}'"
+
+        try:
+            response = requests.post(
+                link_api_url,
+                headers={"X-Client-Secret": client.client_secret, "Content-Type": "application/json"},
+                json={
+                    "email": email, 
+                    "central_auth_id": central_auth_id,
+                    "username": ca_user.username,
+                    "full_name": ca_user.full_name
+                },
+                timeout=5
+            )
+            if response.status_code == 200:
+                return True, response.json()
+            else:
+                return False, f"App returned {response.status_code}: {response.text[:100]}"
+        except Exception as e:
+            return False, f"Connection error: {str(e)}"

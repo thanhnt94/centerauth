@@ -19,7 +19,9 @@ class JWTService:
         access_payload = {
             'sub': user.id,
             'email': user.email,
+            'username': user.username,
             'name': user.full_name,
+            'is_admin': user.is_admin,
             'jti': access_jti,
             'type': 'access',
             'exp': access_exp

@@ -248,6 +248,13 @@ def api_sync_execute():
     """Executes a specific sync action (e.g., Reverse Sync)."""
     from app.services.sync_service import SyncService
     data = request.get_json()
+    action = data.get("action")
+    
+    if action == "sync_admin":
+        results = SyncService.sync_admin_to_all_clients()
+        return {"status": "success", "results": results}, 200
+        
+    return {"status": "error", "message": "Unknown action"}, 400
     
     action = data.get("action")
     client_id = data.get("client_id")

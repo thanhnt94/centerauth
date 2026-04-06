@@ -46,10 +46,16 @@
                 <h1 class="text-2xl font-bold text-slate-900">Đồng bộ Hệ sinh thái</h1>
                 <p class="text-slate-500 text-sm mt-1">Quét và so khớp dữ liệu người dùng giữa CentralAuth và các ứng dụng vệ tinh.</p>
             </div>
-            <button onclick="runScan()" id="scanBtn"
-                class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-200 active:scale-95">
-                <i class="fas fa-search" id="scanIcon"></i> Bắt đầu Quét toàn hệ thống
-            </button>
+            <div class="flex gap-3">
+                <button onclick="syncAdminToAll()" id="syncAdminBtn"
+                    class="bg-rose-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-rose-700 transition flex items-center gap-2 shadow-lg shadow-rose-200 active:scale-95">
+                    <i class="fas fa-crown" id="syncAdminIcon"></i> Sync Admin To All
+                </button>
+                <button onclick="runScan()" id="scanBtn"
+                    class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-200 active:scale-95">
+                    <i class="fas fa-search" id="scanIcon"></i> Bắt đầu Quét toàn hệ thống
+                </button>
+            </div>
         </div>
 
         <!-- System Status Bar -->
@@ -343,6 +349,43 @@
                 alert('Lỗi kết nối: ' + e.message);
             }
         }
+        async function syncAdminToAll() {
+            if (!confirm("⚠️ CẢNH BÁO CAO: Bạn có chắc muốn ép định danh Admin CentralAuth xuống toàn bộ hệ sinh thái?\n\nHành động này sẽ ghi đè Username và Email của User ID 1 ở các trang con nếu chúng chưa được liên kết đúng.")) return;
+            
+            const btn = document.getElementById('syncAdminBtn');
+            const icon = document.getElementById('syncAdminIcon');
+            
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            icon.classList.add('pulse');
+            
+            try {
+                const response = await fetch('/admin/api/sync/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'sync_admin' })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    let log = "KẾT QUẢ ĐỒNG BỘ ADMIN:\n\n";
+                    for (const [app, res] of Object.entries(data.results)) {
+                        log += `[${app}] ${res.success ? '✅ OK' : '❌ LỖI'}: ${res.message}\n`;
+                    }
+                    alert(log);
+                    runScan(); // Refresh
+                } else {
+                    alert('❌ Lỗi: ' + data.message);
+                }
+            } catch (e) {
+                alert('Lỗi kết nối: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+                icon.classList.remove('pulse');
+            }
+        }
+
         async function deleteUser(clientId, email) {
             if (!confirm(`⚠️ Bạn có chắc muốn XOÁ user ${email} khỏi ${clientId}?\n\nHành động này KHÔNG THỂ hoàn tác!`)) return;
             if (!confirm(`🔴 XÁC NHẬN LẦN CUỐI: Xoá ${email} khỏi ${clientId}?`)) return;

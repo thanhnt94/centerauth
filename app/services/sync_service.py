@@ -144,10 +144,36 @@ class SyncService:
         return True, {"id": new_user.id, "temp_password": temp_pass}
 
     @staticmethod
-    def link_user(client_id: str, email: str, central_auth_id: int):
+    def sync_admin_to_all_clients():
+        """
+        Specialized method to force the CentralAuth primary admin's identity 
+        onto the 'ID 1' slot of all active clients.
+        """
+        clients = Client.query.filter_by(is_active=True).all()
+        # Assume the first user in CentralAuth is the primary admin
+        admin = User.query.order_by(User.created_at.asc()).first()
+        if not admin or not admin.is_admin:
+            return {"error": "No primary admin found in CentralAuth"}
+
+        results = {}
+        for client in clients:
+            # We don't have their email in CentralAuth if they have a different local admin
+            # So we use a special 'force_admin_id' flag instead of searching by email
+            ok, msg = SyncService.link_user(
+                client_id=client.client_id, 
+                email=admin.email, # This will be the new email for them
+                central_auth_id=admin.id,
+                is_admin_sync=True
+            )
+            results[client.name] = {"success": ok, "message": msg}
+        
+        return results
+
+    @staticmethod
+    def link_user(client_id: str, email: str, central_auth_id: str, is_admin_sync: bool = False):
         """
         Sends a request to a satellite app to update a user's central_auth_id.
-        This links the local user to their CentralAuth identity.
+        'is_admin_sync' allows forcing identity onto local ID 1.
         """
         client = Client.query.filter_by(client_id=client_id).first()
         if not client:
@@ -178,7 +204,8 @@ class SyncService:
                     "email": email, 
                     "central_auth_id": central_auth_id,
                     "username": ca_user.username,
-                    "full_name": ca_user.full_name
+                    "full_name": ca_user.full_name,
+                    "is_admin_sync": is_admin_sync
                 },
                 timeout=5
             )

@@ -253,14 +253,12 @@ def api_sync_execute():
     if action == "sync_admin":
         results = SyncService.sync_admin_to_all_clients()
         return {"status": "success", "results": results}, 200
-        
-    return {"status": "error", "message": "Unknown action"}, 400
-    
-    action = data.get("action")
+    # Other actions require client_id
     client_id = data.get("client_id")
     email = data.get("email")
+    username = data.get("username")
     
-    if not all([action, client_id, email]):
+    if not action or not client_id:
         return {"status": "error", "message": "Missing required parameters"}, 400
         
     if action == "reverse_sync":
@@ -288,11 +286,11 @@ def api_sync_execute():
             return {"status": "error", "message": result}, 500
             
     elif action == "delete_user":
-        success, result = SyncService.delete_remote_user(client_id, email)
+        success, result = SyncService.delete_remote_user(client_id, email, username)
         if success:
             from app.utils.logger import log_event
-            log_event("USER_DELETE_REMOTE", f"User {email} deleted from {client_id}.")
-            return {"status": "success", "message": f"Đã xoá {email} khỏi {client_id}"}, 200
+            log_event("USER_DELETE_REMOTE", f"User {username or email} deleted from {client_id}.")
+            return {"status": "success", "message": f"Đã xoá {username or email} khỏi {client_id}"}, 200
         else:
             return {"status": "error", "message": result}, 500
 

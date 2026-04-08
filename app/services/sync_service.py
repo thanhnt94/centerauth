@@ -71,8 +71,12 @@ class SyncService:
     def get_sync_report():
         """
         Compiles a report comparing CentralAuth users with all active clients.
+        Excludes legacy/obsolote clients.
         """
-        clients = Client.query.filter_by(is_active=True).all()
+        clients = Client.query.filter(
+            Client.is_active == True,
+            Client.client_id != 'watchtogether-v1'
+        ).all()
         central_users = {u.email: u for u in User.query.all()}
         
         report = {}
@@ -148,8 +152,12 @@ class SyncService:
         """
         Specialized method to force the CentralAuth primary admin's identity 
         onto the 'ID 1' slot of all active clients.
+        Excludes legacy clients like Watch Together.
         """
-        clients = Client.query.filter_by(is_active=True).all()
+        clients = Client.query.filter(
+            Client.is_active == True,
+            Client.client_id != 'watchtogether-v1'
+        ).all()
         # Assume the first user in CentralAuth is the primary admin
         admin = User.query.order_by(User.created_at.asc()).first()
         if not admin or not admin.is_admin:
@@ -217,7 +225,7 @@ class SyncService:
             return False, f"Connection error: {str(e)}"
 
     @staticmethod
-    def delete_remote_user(client_id: str, email: str):
+    def delete_remote_user(client_id: str, email: str, username: str = None):
         """Delete a user from a satellite app's database."""
         client = Client.query.filter_by(client_id=client_id).first()
         if not client:
@@ -236,7 +244,7 @@ class SyncService:
             response = requests.post(
                 delete_api_url,
                 headers={"X-Client-Secret": client.client_secret, "Content-Type": "application/json"},
-                json={"email": email},
+                json={"email": email, "username": username},
                 timeout=5
             )
             if response.status_code == 200:

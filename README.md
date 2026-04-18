@@ -1,35 +1,73 @@
-# CentralAuth System
+# 🛡️ Central Auth: Enterprise Identity Launchpad
 
-Hệ thống xác thực tập trung (SSO) dành cho hệ sinh thái **Ecosystem**. Hệ thống này cung cấp khả năng đăng ký, đăng nhập và xác thực người dùng cho các ứng dụng vệ tinh bằng JSON Web Tokens (JWT).
+**Central Auth** là hệ thống quản lý định danh và xác thực tập trung (Identity Provider - IdP) được thiết kế hiện đại, cao cấp dành cho toàn bộ hệ sinh thái Mindstack. Hệ thống cung cấp cơ chế Single Sign-On (SSO) mạnh mẽ, giúp kết nối và đồng bộ hóa người dùng giữa các ứng dụng vệ tinh (Satellite Apps) một cách tức thì.
 
-## Mục tiêu
-- Cung cấp một nơi duy nhất để quản lý tài khoản người dùng.
-- Cho phép người dùng chuyển đổi giữa các ứng dụng trong hệ sinh thái (MindStack, PodLearn, IPTV) mà không cần đăng nhập lại nhiều lần.
-- Đảm bảo an mật khẩu thông qua hashing.
+---
 
-## Thành phần chính
-- **Backend**: Flask (Python)
-- **Database**: SQLite (SQLAlchemy ORM)
-- **Authentication**: JWT (JSON Web Tokens)
-- **Client Management**: Quản lý các ứng dụng được phép kết nối.
+## 🚀 Công nghệ sử dụng
 
-## Cấu trúc thư mục
-- `app/models/`: Chứa các model cơ sở dữ liệu (`User`, `Client`).
-- `app/routes/`: Các API endpoints cho xác thực (`auth.py`) và quản trị (`admin.py`).
-- `app/services/`: Logic nghiệp vụ (ví dụ: `jwt_service.py`).
-- `app/templates/`: Giao diện web cho admin và trang login.
+Hệ thống được xây dựng trên nền tảng công nghệ hiện đại, ưu tiên hiệu suất và trải nghiệm người dùng cao cấp:
 
-## Tài liệu chi tiết
-- [Cơ sở dữ liệu & Models](docs/DATABASE.md)
-- [Hướng dẫn API](docs/API_OVERVIEW.md)
+### Backend (Core Engine)
+- **Framework**: Python Flask (Modular Monolith Architecture).
+- **Database**: SQLite / PostgreSQL (SQLAlchemy ORM).
+- **Security**: JWT (JSON Web Tokens) với cơ chế Token Rotation và Blacklist.
+- **SSO Protocol**: OAuth 2.1 (Simplified Flow) tối ưu cho môi trường Ecosystem nội bộ.
 
-## Cài đặt & Chạy
-1. Cài đặt dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Cấu hình môi trường trong file `.env` (xem `.env.example`).
-3. Chạy ứng dụng:
-   ```bash
-   python run.py
-   ```
+### Frontend (Admin Studio & Auth SPA)
+- **Framework**: React + Vite (Single Page Application).
+- **Styling**: Tailwind CSS v3 (Custom Dark Theme & Glassmorphism).
+- **Animations**: Framer Motion (Smooth Micro-interactions).
+- **Icons**: Lucide React.
+- **Asset Pipeline**: Cấu hình Vite tối ưu để render file tĩnh trực tiếp vào Flask Static.
+
+---
+
+## ✨ Chức năng chính
+
+1. **Launchpad Portal**: Trang chủ tập trung hiển thị tất cả các ứng dụng mà người dùng có quyền truy cập.
+2. **Power Pairing**: Hệ thống kết nối "mì ăn liền" giúp các ứng dụng mới tham gia vào hệ sinh thái chỉ trong vài phút.
+3. **Connectivity Audit (Zap Check ⚡)**: Tính năng kiểm tra trạng thái hoạt động (Online/Offline) của các ứng dụng vệ tinh ngay trên Dashboard.
+4. **Identity Management**: Quản lý tập trung thông tin người dùng, UUID đồng nhất trên toàn hệ thống.
+5. **Global Logout**: Đăng xuất một nơi, tự động hủy phiên làm việc ở tất cả các ứng dụng liên kết (Single Sign-Out).
+6. **Premium Admin Studio**: Giao diện quản trị hiện đại theo phong cách Glassmorphism với bộ lọc và thống kê thời gian thực.
+
+---
+
+## 🛠️ Hướng dẫn cài đặt
+
+### 1. Cài đặt môi trường Backend
+```bash
+# Di chuyển vào thư mục gốc CentralAuth
+pip install -r requirements.txt
+
+# Cấu hình file .env (Sử dụng các giá trị Client ID/Secret tại đây)
+# Chạy server
+python run_centralauth.py
+```
+
+### 2. Cài đặt và Biên dịch Frontend (Studio)
+```bash
+cd central-auth-studio
+npm install
+
+# Biên dịch frontend sang thư mục static của Flask
+npm run build
+```
+
+---
+
+## 🔗 Hướng dẫn tích hợp (Pairing Guide)
+
+Hệ thống cung cấp helper `EcosystemAuth` giúp bạn tích hợp ứng dụng mới cực kỳ nhanh gọn.
+
+### Các bước nhanh:
+1. Truy cập **Admin Studio** -> **Clients** -> **Register New Client**.
+2. Copy **Client ID** và **Client Secret** được cấp.
+3. Sử dụng helper `app/utils/sso_helper.py` trong ứng dụng của bạn.
+
+> [!TIP]
+> Để xem hướng dẫn code chi tiết (của Flask/FastAPI), hãy tham khảo file: **[PAIRING_GUIDE.md](docs/PAIRING_GUIDE.md)**.
+
+---
+*Mindstack Ecosystem - Secure. Seamless. Unified.*

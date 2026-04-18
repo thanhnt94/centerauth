@@ -36,6 +36,7 @@ class User(db.Model):
             "email": self.email,
             "full_name": self.full_name,
             "avatar_url": self.avatar_url,
+            "role": "admin" if self.is_admin else "user",
             "is_admin": self.is_admin,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None

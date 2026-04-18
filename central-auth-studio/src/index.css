@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --indigo-950: #0a0a2e;
+  --indigo-900: #1a1a4d;
+  --glass: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-200 antialiased overflow-x-hidden;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(67, 56, 202, 0.15) 0px, transparent 50%);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-slate-900/60 backdrop-blur-2xl border border-white/10 shadow-2xl;
+  }
+  
+  .glass-card {
+    @apply glass rounded-[2.5rem] p-8 transition-all duration-500 hover:border-indigo-500/30;
+  }
+
+  .interactive-glass {
+    @apply glass hover:bg-white/5 active:scale-95 transition-all duration-300;
+  }
+
+  .btn-primary {
+    @apply bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest
+           hover:bg-indigo-500 hover:shadow-[0_0_30px_rgba(99,102,241,0.4)] hover:scale-105 active:scale-95 transition-all;
+  }
+
+  .input-field {
+    @apply w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-sm 
+           focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all;
+  }
+
+  .status-badge {
+    @apply px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-indigo-500/20 rounded-full hover:bg-indigo-500/40 transition-all;
+}

@@ -91,6 +91,7 @@ class SyncService:
             stats = {
                 "orphans_local": [],  # Exist in App but NOT in Central
                 "missing_links": [],  # Exist in both but no ID link
+                "data_mismatch": [],  # Linked but properties differ
                 "matching": 0,
                 "total": len(client_users)
             }
@@ -99,13 +100,28 @@ class SyncService:
                 email = cu.get("email")
                 ca_user = central_users.get(email)
                 
+                # If email not found in central, check if there's a user by Central Auth ID
+                if not ca_user and cu.get("central_auth_id"):
+                    ca_user = next((u for u in central_users.values() if str(u.id) == str(cu.get("central_auth_id"))), None)
+
                 if not ca_user:
                     stats["orphans_local"].append(cu)
                 elif not cu.get("central_auth_id") or str(cu["central_auth_id"]) != str(ca_user.id):
                     cu["ca_id_suggestion"] = ca_user.id
                     stats["missing_links"].append(cu)
                 else:
-                    stats["matching"] += 1
+                    # Linked. Check for anomalies in property sync
+                    mismatches = []
+                    if cu.get("username") != ca_user.username:
+                        mismatches.append(f"Username ({cu.get('username')} vs {ca_user.username})")
+                    if cu.get("email") != ca_user.email:
+                        mismatches.append(f"Email ({cu.get('email')} vs {ca_user.email})")
+                        
+                    if mismatches:
+                        cu["mismatch_reasons"] = mismatches
+                        stats["data_mismatch"].append(cu)
+                    else:
+                        stats["matching"] += 1
             
             report[client.client_id] = stats
             

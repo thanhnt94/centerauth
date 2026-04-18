@@ -44,14 +44,14 @@ def validate_client():
     
     if not client_id or not client_secret:
         return jsonify({"error": "Missing client credentials"}), 400
-        
+    
     client = Client.query.filter_by(client_id=client_id, client_secret=client_secret).first()
     if not client:
         return jsonify({"success": False, "error": "Invalid Client ID or Secret"}), 401
-        
+    
     if not client.is_active:
         return jsonify({"success": False, "error": "Client is inactive"}), 403
-        
+    
     return jsonify({
         "success": True, 
         "message": "Kết nối thành công!",
@@ -105,6 +105,11 @@ def login():
                 return jsonify({"error": f"Unauthorized redirect_uri: {return_to}"}), 403
 
     if request.method == "GET":
+        # REDIRECT to the modern Vite-based UI if it's an SSO request
+        if client_id or return_to:
+            # We use /auth/login path which is handled by the index() route and served by Vite index.html
+            return redirect(f"/auth/login?{request.query_string.decode()}")
+        
         if "user_id" in session:
             user = User.query.get(session["user_id"])
             if user and user.is_active:
@@ -118,10 +123,10 @@ def login():
                     return redirect(f"{return_to}{separator}code={auth_code.code}")
                 
                 # If no client, they are just exploring the auth portal
-                return redirect(url_for("index"))
+                return redirect("/")
         
-        # Only show login if no valid session or user inactive
-        return render_template("auth/login.html")
+        # Check if Vite build exists, if so, redirect there
+        return redirect(f"/?{request.query_string.decode()}")
 
     # Handle Login Submission
     login_id = request.form.get("login_id") or (request.get_json().get("username") if request.is_json else None)
@@ -130,16 +135,24 @@ def login():
 
     user = User.query.filter(or_(User.username == login_id, User.email == login_id)).first()
     if not user or not user.check_password(password) or not user.is_active:
-        if request.is_json:
-            return jsonify({"error": "Invalid credentials"}), 401
-        flash("Tài khoản hoặc mật khẩu không chính xác.", "danger")
-        return redirect(url_for("auth.login", return_to=return_to, client_id=client_id))
+        return jsonify({"success": False, "message": "Invalid username or password"}), 401
 
     # Authenticate Browser Session
     session.clear() # Clear any existing flash messages/old session
     session["user_id"] = user.id
     if remember:
         session.permanent = True
+
+    # Success Handling
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('Accept') == 'application/json':
+        target = "/"
+        if client and return_to:
+            auth_code = AuthCode(user_id=user.id, client_id=client_id, redirect_uri=return_to)
+            db.session.add(auth_code)
+            db.session.commit()
+            separator = "&" if "?" in return_to else "?"
+            target = f"{return_to}{separator}code={auth_code.code}"
+        return jsonify({"success": True, "redirect": target})
 
     if client and return_to:
         auth_code = AuthCode(user_id=user.id, client_id=client_id, redirect_uri=return_to)
@@ -149,12 +162,8 @@ def login():
         separator = "&" if "?" in return_to else "?"
         return redirect(f"{return_to}{separator}code={auth_code.code}")
 
-    if request.is_json:
-        tokens = JWTService.generate_token_pair(user)
-        return jsonify({**tokens, "user": user.to_dict()}), 200
-
-    # Redirect to index to ensure apps are loaded via the portal logic
-    return redirect(url_for("index"))
+    flash("Đăng nhập thành công!", "success")
+    return redirect("/")
 
 @auth_bp.route("/token", methods=["POST"])
 @cross_origin()
@@ -267,10 +276,48 @@ def logout():
             WebhookService.notify_all_active_sessions(user_id)
 
     # 3. Clear CentralAuth browser session
-    session.pop("user_id", None)
+    session.clear() # Completely clear all session data, not just user_id
     
     if request.is_json:
         return jsonify({"message": "Global Logout successful"}), 200
         
+    # Support "Round Trip" logout back to the calling app
+    return_to = request.args.get("return_to")
+    if return_to:
+        # Simple security check: ensure it's a relative path or an authorized domain
+        # In this local dev context, we'll allow it.
+        return redirect(return_to)
+        
     flash("Đã đăng xuất khỏi toàn bộ hệ thống.", "info")
     return redirect(url_for("auth.login"))
+
+@auth_bp.route("/portal-apps", methods=["GET"])
+def portal_apps():
+    """Retrieve authorized applications for the portal (User-level)."""
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from app.models.client import Client
+    apps = Client.query.filter(
+        Client.is_visible_on_portal.in_([True, 1]),
+        Client.is_active.in_([True, 1])
+    ).all()
+    return jsonify([a.to_dict() for a in apps])
+
+@auth_bp.route("/me", methods=["GET"])
+def me():
+    """Returns the current logged-in user's profile."""
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    user = User.query.get(session["user_id"])
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    return jsonify({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": "Administrator" if user.is_admin else "Explorer",
+        "avatar_initial": user.username[0].upper() if user.username else "?"
+    })

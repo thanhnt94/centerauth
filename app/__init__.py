@@ -64,23 +64,44 @@ def create_app(config_class=Config):
     from app.routes.auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     
+    from app.routes.admin_api import admin_api_bp
+    app.register_blueprint(admin_api_bp, url_prefix="/admin/api")
+
     from app.routes.admin import admin_bp
     app.register_blueprint(admin_bp, url_prefix="/admin")
     
     from app.routes.user import user_bp
     app.register_blueprint(user_bp, url_prefix="/user")
 
-    from flask import session
     @app.route("/")
+    @app.route("/auth/login")
+    @app.route("/admin/clients")
+    @app.route("/admin/users")
+    @app.route("/admin/settings")
+    @app.route("/admin/logs")
+    @app.route("/admin/sync")
     def index():
+        """Serves the Unified Portal (Vite SPA) or redirects to login."""
+        from flask import session, redirect, url_for, request
+        import os
+
+        # Authentication Guard
         if "user_id" in session:
-            user = User.query.get(session["user_id"])
-            if user:
-                apps = Client.query.filter(
-                    Client.is_visible_on_portal.in_([True, 1]),
-                    Client.is_active.in_([True, 1])
-                ).all()
-                return render_template("auth/success.html", user=user, apps=apps)
-        return redirect(url_for("auth.login"))
+            if request.path == "/auth/login":
+                # Redirect already logged-in users to the main portal if no SSO params
+                if not request.args.get("client_id") and not request.args.get("return_to"):
+                    return redirect("/")
+        elif request.path != "/auth/login":
+            # Redirect unauthenticated users to login path directly to avoid loop with API route
+            return_to = request.args.get("return_to", "")
+            return redirect(f"/auth/login?return_to={return_to}")
+        
+        # Serving Logic: Serve Vite Dist
+        dist_path = os.path.join(app.root_path, 'static', 'dist', 'index.html')
+        if os.path.exists(dist_path):
+            from flask import send_from_directory
+            return send_from_directory(os.path.join(app.root_path, 'static', 'dist'), 'index.html')
+        
+        return "Identity Node Frontend not found. Please run 'npm run build' in central-auth-studio.", 404
 
     return app

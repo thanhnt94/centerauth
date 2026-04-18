@@ -17,15 +17,7 @@ def restrict_admin_access():
         flash("Bạn không có quyền truy cập trang này.", "danger")
         return redirect(url_for("auth.login"))
 
-@admin_bp.route("/")
-def dashboard():
-    clients = Client.query.order_by(Client.created_at.desc()).all()
-    return render_template("admin/dashboard.html", clients=clients)
 
-@admin_bp.route("/users")
-def users():
-    users_list = User.query.order_by(User.created_at.desc()).all()
-    return render_template("admin/users.html", users=users_list)
 
 @admin_bp.route("/users/edit/<id>", methods=["POST"])
 def edit_user(id):
@@ -55,41 +47,9 @@ def edit_user(id):
         
     return redirect(url_for("admin.users"))
 
-@admin_bp.route("/logs")
-def logs():
-    from app.models.audit_log import AuditLog
-    logs_list = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(100).all()
-    return render_template("admin/logs.html", logs=logs_list)
 
-@admin_bp.route("/settings", methods=["GET", "POST"])
-def settings():
-    from app.models.settings import SystemSetting
-    
-    if request.method == "POST":
-        for key, value in request.form.items():
-            setting = SystemSetting.query.get(key)
-            if setting:
-                setting.value = value
-        try:
-            db.session.commit()
-            from app.utils.logger import log_event
-            log_event("SETTINGS_UPDATED", "System settings updated by admin.")
-            flash("Đã cập nhật cài đặt hệ thống thành công!", "success")
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Lỗi khi cập nhật cài đặt: {str(e)}", "danger")
-        return redirect(url_for("admin.settings"))
 
-    settings_list = SystemSetting.query.all()
-    # Group by category
-    categories = {}
-    for s in settings_list:
-        cat = s.category or "Tổng quan"
-        if cat not in categories:
-            categories[cat] = []
-        categories[cat].append(s)
-        
-    return render_template("admin/settings.html", categories=categories)
+
 
 @admin_bp.route("/clients/add", methods=["POST"])
 def add_client():
@@ -228,10 +188,7 @@ def ping_client(id):
 
 # --- User Synchronization Routes ---
 
-@admin_bp.route("/sync")
-def sync_dashboard():
-    """Renders the User Synchronization Dashboard."""
-    return render_template("admin/sync_dashboard.html")
+
 
 @admin_bp.route("/api/sync/scan")
 def api_sync_scan():

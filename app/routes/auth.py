@@ -42,11 +42,14 @@ def validate_client():
     client_id = data.get("client_id")
     client_secret = data.get("client_secret")
     
+    print(f"[HUB_VALIDATE] Received ID: |{client_id}|, Secret: |{client_secret}|")
+    
     if not client_id or not client_secret:
         return jsonify({"error": "Missing client credentials"}), 400
     
     client = Client.query.filter_by(client_id=client_id, client_secret=client_secret).first()
     if not client:
+        print(f"[HUB_VALIDATE] FAILED: No match for ID={client_id} and Secret={client_secret}")
         return jsonify({"success": False, "error": "Invalid Client ID or Secret"}), 401
     
     if not client.is_active:
@@ -318,6 +321,6 @@ def me():
         "id": user.id,
         "username": user.username,
         "email": user.email,
-        "role": "Administrator" if user.is_admin else "Explorer",
+        "role": "admin" if user.is_admin else "user",
         "avatar_initial": user.username[0].upper() if user.username else "?"
     })

@@ -84,6 +84,88 @@ def manage_settings():
 
     settings_list = SystemSetting.query.all()
     return jsonify([{'key': s.key, 'value': s.value, 'description': s.description, 'category': s.category} for s in settings_list])
+@admin_api_bp.route("/clients/<int:id>", methods=["PUT"])
+def update_client(id):
+    client = Client.query.get(id)
+    if not client:
+        return jsonify({"success": False, "message": "Client không tồn tại"}), 404
+        
+    data = request.get_json()
+    if 'name' in data: client.name = data['name']
+    if 'client_secret' in data: client.client_secret = data['client_secret']
+    if 'redirect_uri' in data: client.redirect_uri = data['redirect_uri']
+    if 'backchannel_logout_uri' in data: client.backchannel_logout_uri = data['backchannel_logout_uri']
+    if 'app_icon' in data: client.app_icon = data['app_icon']
+    if 'app_description' in data: client.app_description = data['app_description']
+    if 'app_color_theme' in data: client.app_color_theme = data['app_color_theme']
+    if 'is_visible_on_portal' in data: client.is_visible_on_portal = data['is_visible_on_portal']
+    if 'is_active' in data: client.is_active = data['is_active']
+    
+    try:
+        db.session.commit()
+        from app.utils.logger import log_event
+        log_event("CLIENT_EDITED", f"Admin updated client {client.name} via API (ID: {client.client_id})")
+        return jsonify({"success": True, "message": "Cập nhật thành công!"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@admin_api_bp.route("/clients/<int:id>", methods=["DELETE"])
+def delete_client(id):
+    client = Client.query.get(id)
+    if not client:
+        return jsonify({"success": False, "message": "Client không tồn tại"}), 404
+        
+    try:
+        db.session.delete(client)
+        db.session.commit()
+        from app.utils.logger import log_event
+        log_event("CLIENT_DELETED", f"Admin deleted client {client.name} via API (ID: {client.client_id})")
+        return jsonify({"success": True, "message": "Xóa thành công!"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@admin_api_bp.route("/clients/<int:id>/push", methods=["POST"])
+def push_to_client(id):
+    client = Client.query.get(id)
+    if not client:
+        return jsonify({"success": False, "message": "Client không tồn tại"}), 404
+        
+    # All our apps use the same convention: /api/admin/ecosystem-sync
+    # We use the FIRST redirect URI as the base URL
+    base_url = client.redirect_uri.split(',')[0].split('/auth-center/callback')[0].rstrip('/')
+    sync_url = f"{base_url}/api/admin/ecosystem-sync"
+    
+    # Fetch all identities to sync
+    all_users = User.query.filter_by(is_active=True).all()
+    users_payload = [
+        {
+            "username": u.username,
+            "email": u.email,
+            "full_name": u.full_name,
+            "role": "admin" if u.is_admin else "free"
+        } for u in all_users
+    ]
+
+    payload = {
+        "hub_secret": client.client_secret,
+        "server_address": request.host_url.rstrip('/'),
+        "client_id": client.client_id,
+        "client_secret": client.client_secret,
+        "users": users_payload
+    }
+    
+    try:
+        import requests
+        r = requests.post(sync_url, json=payload, timeout=5)
+        if r.ok:
+            return jsonify({"success": True, "message": "Đồng bộ Hub -> Client thành công!"})
+        else:
+            return jsonify({"success": False, "message": f"Client từ chối đồng bộ: {r.text}"}), r.status_code
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Không thể kết nối tới Client: {str(e)}"}), 500
+
 @admin_api_bp.route("/ping-client", methods=["POST"])
 def ping_client():
     """Verify if a remote client application is reachable and correctly configured."""

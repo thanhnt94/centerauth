@@ -6,13 +6,105 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Client } from '../../types';
 
+const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSuccess: () => void }> = ({ client, onClose, onSuccess }) => {
+  const [name, setName] = useState(client?.name || '');
+  const [clientId, setClientId] = useState(client?.client_id || '');
+  const [clientSecret, setClientSecret] = useState(client?.client_secret || '');
+  const [redirectUri, setRedirectUri] = useState(client?.redirect_uri || '');
+  const [backchannelUri, setBackchannelUri] = useState(client?.backchannel_logout_uri || '');
+
+  // Smart URI Auto-completion logic
+  useEffect(() => {
+    if (redirectUri.includes('/auth-center/callback')) {
+      const baseUrl = redirectUri.split('/auth-center/callback')[0];
+      const autoBackchannel = `${baseUrl}/auth-center/webhook/backchannel-logout`;
+      setBackchannelUri(autoBackchannel);
+    }
+  }, [redirectUri]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      name,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      backchannel_logout_uri: backchannelUri
+    };
+
+    try {
+      const url = client ? `/admin/api/clients/${client.id}` : '/admin/clients/add';
+      const method = client ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) onSuccess();
+      else alert('Thao tác thất bại');
+    } catch (err) {
+      alert('Lỗi kết nối server');
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.9, opacity: 0 }}
+      className="glass p-12 rounded-[3.5rem] w-full max-w-xl space-y-8 border-indigo-500/30"
+    >
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="text-2xl font-black text-white uppercase tracking-tight">{client ? 'Edit Client' : 'Register Client'}</h3>
+          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-2">Manage your ecosystem nodes</p>
+        </div>
+        <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl transition-all"><X size={24} className="text-slate-500" /></button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-slate-500">App Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500/50" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-slate-500">Client ID</label>
+            <input value={clientId} onChange={e => setClientId(e.target.value)} readOnly={!!client} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none opacity-50" />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500">Client Secret</label>
+          <input value={clientSecret} onChange={e => setClientSecret(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500/50" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500">Redirect URIs (comma separated)</label>
+          <input value={redirectUri} onChange={e => setRedirectUri(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500/50" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500">Backchannel Logout URI (Smart-Sync Active)</label>
+          <input value={backchannelUri} onChange={e => setBackchannelUri(e.target.value)} className="w-full bg-white/10 border border-indigo-500/30 rounded-2xl p-4 text-sm text-indigo-300 outline-none focus:border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.1)]" placeholder="Auto-completes from redirect URI..." />
+        </div>
+
+        <button type="submit" className="w-full btn-primary py-4 mt-4 font-black uppercase tracking-widest text-xs">
+          {client ? 'Save Changes' : 'Register Application'}
+        </button>
+      </form>
+    </motion.div>
+  );
+};
+
 export const Clients: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isPairingModalOpen, setIsPairingModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientStatuses, setClientStatuses] = useState<Record<number, { online: boolean | null, message: string }>>({});
-
   const [copied, setCopied] = useState(false);
 
   const fetchClients = () => {
@@ -24,9 +116,7 @@ export const Clients: React.FC = () => {
         setLoading(false);
       })
       .catch(() => {
-        setClients([
-          { id: 1, name: 'PodLearn', client_id: 'podlearn_id_123', client_secret: 'podlearn_secret_xyz', redirect_uri: 'http://localhost:5001/auth/callback', app_icon: 'Shield', app_color_theme: 'sky', is_active: true, is_visible_on_portal: true, created_at: '2026-04-18' },
-        ] as any);
+        setClients([]);
         setLoading(false);
       });
   };
@@ -41,13 +131,23 @@ export const Clients: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Bạn có chắc muốn xóa ứng dụng này khỏi hệ sinh thái?')) return;
+    try {
+      const res = await fetch(`/admin/api/clients/${id}`, { method: 'DELETE' });
+      if (res.ok) fetchClients();
+    } catch (err) {
+      alert('Lỗi khi xóa client');
+    }
+  };
+
   const checkConnection = async (client: Client) => {
     try {
       setClientStatuses(prev => ({ ...prev, [client.id]: { online: null, message: 'Pinging...' } }));
       const res = await fetch('/admin/api/ping-client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base_url: client.redirect_uri.split(',')[0].split('/').slice(0,3).join('/') })
+        body: JSON.stringify({ base_url: client.redirect_uri.split(',')[0] })
       });
       const data = await res.json();
       setClientStatuses(prev => ({ 
@@ -80,7 +180,10 @@ sso = EcosystemAuth(CENTRAL_AUTH_SERVER, CLIENT_ID, CLIENT_SECRET)
           <h2 className="text-3xl font-black text-white tracking-tight">Client Ecosystem</h2>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-2">Manage authorized satellite applications</p>
         </div>
-        <button className="btn-primary flex items-center gap-3">
+        <button 
+          onClick={() => { setEditingClient(null); setIsEditModalOpen(true); }}
+          className="btn-primary flex items-center gap-3"
+        >
           <Plus size={20} />
           <span>Register New Client</span>
         </button>
@@ -131,12 +234,12 @@ sso = EcosystemAuth(CENTRAL_AUTH_SERVER, CLIENT_ID, CLIENT_SECRET)
                     </div>
                   </td>
                   <td className="px-10 py-8">
-                     <div className="flex flex-col gap-1">
-                       <span className="text-xs font-bold text-slate-400 font-mono">Redirect: {client.redirect_uri.split(',')[0]}</span>
-                       {client.backchannel_logout_uri && (
-                         <span className="text-[10px] text-rose-500/50 font-black uppercase tracking-widest">Global Logout Active</span>
-                       )}
-                     </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-slate-400 font-mono">Redirect: {client.redirect_uri.split(',')[0]}</span>
+                      {client.backchannel_logout_uri && (
+                        <span className="text-[10px] text-rose-500/50 font-black uppercase tracking-widest">Global Logout Active</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-10 py-8">
                     <div className="flex items-center gap-2">
@@ -173,14 +276,40 @@ sso = EcosystemAuth(CENTRAL_AUTH_SERVER, CLIENT_ID, CLIENT_SECRET)
                         Pairing Helper
                       </button>
                       <button 
+                        onClick={async () => {
+                          if (!window.confirm(`Đồng bộ cấu hình từ Hub xuống ${client.name}?`)) return;
+                          try {
+                            const res = await fetch(`/admin/api/clients/${client.id}/push`, { method: 'POST' });
+                            const data = await res.json();
+                            alert(data.message);
+                          } catch (err) {
+                            alert('Lỗi kết nối');
+                          }
+                        }}
+                        className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-indigo-400 transition-all shadow-lg"
+                        title="Sync Hub -> Client"
+                      >
+                        <ShieldCheck size={16} />
+                      </button>
+                      <button 
                         onClick={() => checkConnection(client)}
                         className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-emerald-400 transition-all shadow-lg"
                         title="Check Connectivity"
                       >
                         <Zap size={16} />
                       </button>
-                      <button className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-all"><Edit2 size={16} /></button>
-                      <button className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={16} /></button>
+                      <button 
+                        onClick={() => { setEditingClient(client); setIsEditModalOpen(true); }}
+                        className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-all"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(client.id)}
+                        className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-rose-500 transition-all"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -191,6 +320,16 @@ sso = EcosystemAuth(CENTRAL_AUTH_SERVER, CLIENT_ID, CLIENT_SECRET)
       </div>
 
       <AnimatePresence>
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+            <ClientForm 
+              client={editingClient} 
+              onClose={() => setIsEditModalOpen(false)} 
+              onSuccess={() => { setIsEditModalOpen(false); fetchClients(); }} 
+            />
+          </div>
+        )}
+
         {isPairingModalOpen && selectedClient && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
             <motion.div 

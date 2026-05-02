@@ -127,7 +127,7 @@ export const UserLaunchpad: React.FC<{ user: UserInfo }> = ({ user }) => {
           ) : clients.map((app, idx) => (
             <motion.a
               key={app.id}
-              href={app.redirect_uri.split(',')[0]}
+              href={`/api/auth/jump/${app.client_id}`}
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}

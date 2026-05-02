@@ -29,8 +29,8 @@ class User(db.Model):
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(self, include_password_hash: bool = False) -> dict:
+        data = {
             "id": self.id,
             "username": self.username,
             "email": self.email,
@@ -41,3 +41,9 @@ class User(db.Model):
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
+        if include_password_hash:
+            data["password_hash"] = self.password_hash
+        return data
+
+    def __repr__(self) -> str:
+        return f"<User {self.username}>"

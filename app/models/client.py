@@ -10,10 +10,13 @@ class Client(db.Model):
     client_secret = db.Column(db.String(255), nullable=False)
     name = db.Column(db.String(255), nullable=False)
     
-    # Authorized redirect URIs (comma-separated)
-    redirect_uri = db.Column(db.Text, nullable=False)
+    # Authorized redirect URIs (comma-separated). If empty, defaults to {app_url}/auth-center/callback
+    redirect_uri = db.Column(db.Text, nullable=True)
     
-    # Webhook endpoint for Global Logout (Single Sign-Out)
+    # Base application URL (required for Launchpad and auto-link generation)
+    app_url = db.Column(db.String(500), nullable=True) 
+    
+    # Webhook endpoint for Global Logout. If empty, defaults to {app_url}/auth-center/webhook/backchannel-log
     backchannel_logout_uri = db.Column(db.Text, nullable=True)
     
     # Portal Display Configuration
@@ -32,6 +35,7 @@ class Client(db.Model):
             'client_secret': self.client_secret,
             'name': self.name,
             'redirect_uri': self.redirect_uri,
+            'app_url': self.app_url,
             'backchannel_logout_uri': self.backchannel_logout_uri,
             'app_icon': self.app_icon,
             'app_description': self.app_description,

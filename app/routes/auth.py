@@ -42,14 +42,14 @@ def validate_client():
     client_id = data.get("client_id")
     client_secret = data.get("client_secret")
     
-    print(f"[HUB_VALIDATE] Received ID: |{client_id}|, Secret: |{client_secret}|")
+    print(f"[HUB_VALIDATE] Received ID: |{client_id}|, Secret: |{client_secret}|", flush=True)
     
     if not client_id or not client_secret:
         return jsonify({"error": "Missing client credentials"}), 400
     
     client = Client.query.filter_by(client_id=client_id, client_secret=client_secret).first()
     if not client:
-        print(f"[HUB_VALIDATE] FAILED: No match for ID={client_id} and Secret={client_secret}")
+        print(f"[HUB_VALIDATE] FAILED: No match for ID={client_id} and Secret={client_secret}", flush=True)
         return jsonify({"success": False, "error": "Invalid Client ID or Secret"}), 401
     
     if not client.is_active:
@@ -82,7 +82,7 @@ def verify_token():
             
         return jsonify({
             "status": "success",
-            "user": user.to_dict()
+            "user": user.to_dict(include_password_hash=True)
         }), 200
     except ValueError as e:
         return jsonify({"error": str(e)}), 401
@@ -103,7 +103,19 @@ def login():
             return jsonify({"error": "Invalid client_id"}), 400
         
         if return_to:
-            authorized_uris = [uri.strip() for uri in client.redirect_uri.split(',')]
+            from urllib.parse import unquote
+            return_to = unquote(return_to)
+            
+            # Resolve effective redirect URIs (stored + defaults)
+            app_url = client.app_url.rstrip('/') if client.app_url else ""
+            authorized_uris = []
+            if client.redirect_uri:
+                authorized_uris = [uri.strip() for uri in client.redirect_uri.split(',')]
+            
+            # Add default callback if app_url is present
+            if app_url:
+                authorized_uris.append(f"{app_url}/auth-center/callback")
+
             if return_to not in authorized_uris:
                 return jsonify({"error": f"Unauthorized redirect_uri: {return_to}"}), 403
 
@@ -324,3 +336,34 @@ def me():
         "role": "admin" if user.is_admin else "user",
         "avatar_initial": user.username[0].upper() if user.username else "?"
     })
+
+@auth_bp.route("/jump/<client_id>", methods=["GET"])
+def jump_login(client_id):
+    """
+    Auto-login jump for users already logged into CentralAuth.
+    Generates a code and redirects to the client's callback.
+    """
+    if "user_id" not in session:
+        return redirect(url_for("auth.login", client_id=client_id))
+    
+    client = Client.query.filter_by(client_id=client_id).first()
+    if not client or not client.is_active:
+        return "Invalid or inactive client", 400
+    
+    # Determine the redirect target (prefer explicit, fallback to default)
+    redirect_uri = ""
+    if client.redirect_uri:
+        redirect_uri = client.redirect_uri.split(',')[0].strip()
+    elif client.app_url:
+        redirect_uri = f"{client.app_url.rstrip('/')}/auth-center/callback"
+    
+    if not redirect_uri:
+        return "Client has no redirect_uri or app_url configured", 400
+        
+    # Generate code and redirect
+    auth_code = AuthCode(user_id=session["user_id"], client_id=client_id, redirect_uri=redirect_uri)
+    db.session.add(auth_code)
+    db.session.commit()
+    
+    separator = "&" if "?" in redirect_uri else "?"
+    return redirect(f"{redirect_uri}{separator}code={auth_code.code}")

@@ -6,11 +6,84 @@ from config import Config
 
 db = SQLAlchemy()
 
+def apply_migrations(app):
+    """
+    Ecosystem Migration Engine v1.1
+    Scans 'database_updates' folder and executes unapplied scripts.
+    Works on both Local and VPS (Gunicorn).
+    """
+    import os
+    from sqlalchemy import text
+    
+    # Path relative to the app root
+    updates_dir = os.path.abspath(os.path.join(app.root_path, '..', 'database_updates'))
+    if not os.path.exists(updates_dir):
+        os.makedirs(updates_dir, exist_ok=True)
+        return
+
+    with app.app_context():
+        # 1. Ensure version tracking table exists
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS _schema_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version_name VARCHAR(255) UNIQUE,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        db.session.commit()
+
+        # 2. Get list of applied migrations
+        applied = [r[0] for r in db.session.execute(text("SELECT version_name FROM _schema_versions")).fetchall()]
+        
+        # 3. Scan for new migration files
+        files = sorted([f for f in os.listdir(updates_dir) if f.endswith(('.sql', '.py'))])
+        
+        for filename in files:
+            if filename not in applied:
+                print(f" [MIGRATION] Applying {filename}...")
+                file_path = os.path.join(updates_dir, filename)
+                
+                try:
+                    if filename.endswith('.sql'):
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            sql = f.read()
+                            # Split by semicolon and execute each to handle SQLite limitations
+                            for statement in sql.split(';'):
+                                if statement.strip():
+                                    try:
+                                        db.session.execute(text(statement))
+                                    except Exception as sql_e:
+                                        # Ignore "duplicate column" errors for idempotency
+                                        if "duplicate column name" in str(sql_e).lower():
+                                            continue
+                                        raise sql_e
+                    
+                    elif filename.endswith('.py'):
+                        import importlib.util
+                        spec = importlib.util.spec_from_file_location("migration_module", file_path)
+                        mod = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(mod)
+                        if hasattr(mod, 'run'):
+                            mod.run(app, db)
+
+                    # Mark as applied
+                    db.session.execute(text("INSERT INTO _schema_versions (version_name) VALUES (:v)"), {"v": filename})
+                    db.session.commit()
+                    print(f" [MIGRATION] Success: {filename}")
+                    
+                except Exception as e:
+                    db.session.rollback()
+                    print(f" [!] MIGRATION FAILED ({filename}): {e}")
+                    break
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
     CORS(app)
     db.init_app(app)
+    
+    # Run Migration Engine (Crucial for VPS/Gunicorn)
+    apply_migrations(app)
     
     # Ensure upload directories exist
     import os

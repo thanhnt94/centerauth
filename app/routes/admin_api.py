@@ -35,6 +35,8 @@ def update_user(id):
         user.role = data['role']
         user.is_admin = data['role'] == 'admin'
     if 'is_active' in data: user.is_active = data['is_active']
+    if 'password' in data and data['password']:
+        user.set_password(data['password'])
     
     try:
         db.session.commit()

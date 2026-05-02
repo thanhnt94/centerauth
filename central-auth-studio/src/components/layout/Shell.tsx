@@ -42,6 +42,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
 
   const menuItems = [
     { icon: <LayoutGrid size={20} />, label: 'Portal', path: '/', color: 'text-indigo-400' },
+    { icon: <Settings size={20} />, label: 'Account', path: '/settings', color: 'text-indigo-300' },
   ];
 
   if (user?.role === 'admin') {

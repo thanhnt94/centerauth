@@ -8,7 +8,8 @@ import { SyncDashboard } from './pages/admin/SyncDashboard';
 import { Login } from './pages/auth/Login';
 
 import { Logs } from './pages/admin/Logs';
-import { Settings } from './pages/admin/Settings';
+import { Settings as AdminSettings } from './pages/admin/Settings';
+import { Settings as UserSettings } from './pages/Settings';
 
 const App: React.FC = () => {
   return (
@@ -21,7 +22,8 @@ const App: React.FC = () => {
               <Route path="/" element={<Portal />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
-              <Route path="/admin/settings" element={<Settings />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/settings" element={<UserSettings />} />
               <Route path="/admin/logs" element={<Logs />} />
               <Route path="/admin/sync" element={<SyncDashboard />} />
             </Routes>

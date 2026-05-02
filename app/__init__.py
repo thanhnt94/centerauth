@@ -146,6 +146,9 @@ def create_app(config_class=Config):
     from app.routes.user import user_bp
     app.register_blueprint(user_bp, url_prefix="/user")
 
+    from app.routes.profile_api import profile_api_bp
+    app.register_blueprint(profile_api_bp, url_prefix="/api/profile")
+
     @app.route("/")
     @app.route("/auth/login")
     @app.route("/admin/clients")

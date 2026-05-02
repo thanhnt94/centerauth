@@ -13,6 +13,7 @@ export const Identities: React.FC = () => {
   const [search, setSearch] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [adminResetPassword, setAdminResetPassword] = useState('');
 
   const fetchUsers = () => {
     setLoading(true);
@@ -23,10 +24,7 @@ export const Identities: React.FC = () => {
         setLoading(false);
       })
       .catch(() => {
-        setUsers([
-          { id: 1, username: 'admin', email: 'admin@aura.flow', full_name: 'Huy Nguyễn', role: 'admin', is_admin: true, is_active: true, created_at: '2026-04-10' },
-          { id: 2, username: 'thanhnt', email: 'thanh@example.com', full_name: 'Thanh Nguyen', role: 'user', is_admin: false, is_active: true, created_at: '2026-04-15' },
-        ] as any);
+        setUsers([]);
         setLoading(false);
       });
   };
@@ -165,16 +163,18 @@ export const Identities: React.FC = () => {
                        full_name: selectedUser.full_name,
                        email: selectedUser.email,
                        role: selectedUser.role,
-                       is_active: selectedUser.is_active
+                       is_active: selectedUser.is_active,
+                       password: adminResetPassword
                      })
                    });
                    const data = await res.json();
                    if (!res.ok) throw new Error(data.message || 'Update failed');
                    
                    setIsEditModalOpen(false);
+                   setAdminResetPassword('');
                    fetchUsers(); // Refresh the list
                  } catch (err) {
-                   alert("Thao tác thất bại. Vui lòng kiểm tra lại log.");
+                   alert("Thao tác thất bại.");
                  }
                }} className="space-y-5">
                   <div className="space-y-1.5">
@@ -221,6 +221,17 @@ export const Identities: React.FC = () => {
                          <option value="suspended">Suspended (Denied)</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-4">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400 ml-2">Reset Password (Leave blank to keep current)</label>
+                    <input 
+                      type="password" 
+                      placeholder="••••••••"
+                      value={adminResetPassword} 
+                      onChange={e => setAdminResetPassword(e.target.value)}
+                      className="w-full bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-4 text-sm outline-none focus:border-indigo-400 transition-all text-white placeholder:text-slate-600" 
+                    />
                   </div>
 
                   <div className="pt-6 border-t border-white/5 mt-6">

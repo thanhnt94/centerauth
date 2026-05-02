@@ -16,6 +16,7 @@ export interface Client {
   client_secret: string;
   name: string;
   redirect_uri: string;
+  app_url?: string;
   backchannel_logout_uri?: string;
   app_icon: string;
   app_description?: string;

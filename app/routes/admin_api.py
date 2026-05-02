@@ -98,6 +98,7 @@ def update_client(id):
     if 'app_icon' in data: client.app_icon = data['app_icon']
     if 'app_description' in data: client.app_description = data['app_description']
     if 'app_color_theme' in data: client.app_color_theme = data['app_color_theme']
+    if 'app_url' in data: client.app_url = data['app_url']
     if 'is_visible_on_portal' in data: client.is_visible_on_portal = data['is_visible_on_portal']
     if 'is_active' in data: client.is_active = data['is_active']
     
@@ -134,7 +135,8 @@ def push_to_client(id):
         
     # All our apps use the same convention: /api/admin/ecosystem-sync
     # We use the FIRST redirect URI as the base URL
-    base_url = client.redirect_uri.split(',')[0].split('/auth-center/callback')[0].rstrip('/')
+    # Priority: app_url, then derived from redirect_uri
+    base_url = client.app_url.rstrip('/') if client.app_url else client.redirect_uri.split(',')[0].split('/auth-center/callback')[0].rstrip('/')
     sync_url = f"{base_url}/api/admin/ecosystem-sync"
     
     # Fetch all identities to sync

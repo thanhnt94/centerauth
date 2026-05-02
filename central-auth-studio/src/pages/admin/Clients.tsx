@@ -10,17 +10,26 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
   const [name, setName] = useState(client?.name || '');
   const [clientId, setClientId] = useState(client?.client_id || '');
   const [clientSecret, setClientSecret] = useState(client?.client_secret || '');
+  const [appUrl, setAppUrl] = useState(client?.app_url || '');
   const [redirectUri, setRedirectUri] = useState(client?.redirect_uri || '');
   const [backchannelUri, setBackchannelUri] = useState(client?.backchannel_logout_uri || '');
 
-  // Smart URI Auto-completion logic
+  // Smart URI Auto-completion logic from App URL
   useEffect(() => {
-    if (redirectUri.includes('/auth-center/callback')) {
-      const baseUrl = redirectUri.split('/auth-center/callback')[0];
-      const autoBackchannel = `${baseUrl}/auth-center/webhook/backchannel-logout`;
-      setBackchannelUri(autoBackchannel);
+    if (appUrl && appUrl.startsWith('http')) {
+      const normalizedUrl = appUrl.replace(/\/+$/, ''); // Remove trailing slashes
+      
+      // Auto-fill Redirect URI if empty or matching old pattern
+      if (!redirectUri || redirectUri.includes('/auth-center/callback')) {
+        setRedirectUri(`${normalizedUrl}/auth-center/callback`);
+      }
+      
+      // Auto-fill Backchannel if empty or matching old pattern
+      if (!backchannelUri || backchannelUri.includes('/auth-center/webhook')) {
+        setBackchannelUri(`${normalizedUrl}/auth-center/webhook/backchannel-log`);
+      }
     }
-  }, [redirectUri]);
+  }, [appUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +37,7 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
       name,
       client_id: clientId,
       client_secret: clientSecret,
+      app_url: appUrl,
       redirect_uri: redirectUri,
       backchannel_logout_uri: backchannelUri
     };
@@ -72,6 +82,17 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
             <label className="text-[10px] font-black uppercase text-slate-500">Client ID</label>
             <input value={clientId} onChange={e => setClientId(e.target.value)} readOnly={!!client} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none opacity-50" />
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500">App URL (Primary Base URL)</label>
+          <input 
+            value={appUrl} 
+            onChange={e => setAppUrl(e.target.value)} 
+            required 
+            placeholder="https://yourapp.click"
+            className="w-full bg-white/10 border border-indigo-500/30 rounded-2xl p-4 text-sm text-indigo-300 outline-none focus:border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.05)]" 
+          />
         </div>
 
         <div className="space-y-1">

@@ -148,7 +148,8 @@ def push_to_client(id):
             "username": u.username,
             "email": u.email,
             "full_name": u.full_name,
-            "role": "admin" if u.is_admin else "free"
+            "role": "admin" if u.is_admin else "free",
+            "password_hash": u.password_hash
         } for u in all_users
     ]
 

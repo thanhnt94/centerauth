@@ -7,6 +7,7 @@ export const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +23,7 @@ export const Login: React.FC = () => {
       const formData = new FormData();
       formData.append('login_id', loginId);
       formData.append('password', password);
+      if (remember) formData.append('remember', 'on');
       if (clientId) formData.append('client_id', clientId);
 
       const response = await fetch(`/api/auth/login${window.location.search}`, {
@@ -43,7 +45,7 @@ export const Login: React.FC = () => {
         // If it returns JSON success
         const data = await response.json();
         if (data.success) {
-           window.location.href = data.redirect || (returnTo ? decodeURIComponent(returnTo) : '/');
+           window.location.href = data.redirect || (returnTo ? decodeURIComponent(returnTo) : '/portal');
         } else {
            setError(data.message || 'Login failed. Check your credentials.');
         }
@@ -129,6 +131,18 @@ export const Login: React.FC = () => {
                       className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-5 pl-14 pr-6 text-sm font-medium text-white outline-none focus:border-indigo-500/30 transition-all"
                     />
                  </div>
+              </div>
+
+              <div className="flex items-center justify-between px-1">
+                 <label className="flex items-center gap-2 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/10 bg-slate-900/50 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900 accent-indigo-600 cursor-pointer"
+                    />
+                    <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-400 transition-colors uppercase tracking-wider">Keep session alive</span>
+                 </label>
               </div>
 
               <button 

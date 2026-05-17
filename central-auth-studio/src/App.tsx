@@ -6,6 +6,7 @@ import { Clients } from './pages/admin/Clients';
 import { Identities } from './pages/admin/Identities';
 import { SyncDashboard } from './pages/admin/SyncDashboard';
 import { Login } from './pages/auth/Login';
+import { LandingPage } from './pages/LandingPage';
 
 import { Logs } from './pages/admin/Logs';
 import { Settings as AdminSettings } from './pages/admin/Settings';
@@ -15,11 +16,12 @@ const App: React.FC = () => {
   return (
     <Router>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/auth/login" element={<Login />} />
         <Route path="*" element={
           <Shell>
             <Routes>
-              <Route path="/" element={<Portal />} />
+              <Route path="/portal" element={<Portal />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

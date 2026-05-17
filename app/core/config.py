@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         os.makedirs(self.STORAGE_DIR, exist_ok=True)
-        db_path = os.path.join(self.STORAGE_DIR, "centralauth.db")
+        db_path = os.path.join(self.STORAGE_DIR, "CentralAuth.db")
         return f"sqlite+aiosqlite:///{db_path}"
     
     SECRET_KEY: str = os.getenv("SECRET_KEY", "central_auth_secret_key_999")

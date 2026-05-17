@@ -5,6 +5,8 @@ import sys
 # Ensure 'app' can be found
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from app.main import app
+
 if __name__ == "__main__":
     print("🚀 Starting CentralAuth FastAPI (Standard MindStack Architecture)...")
     uvicorn.run(

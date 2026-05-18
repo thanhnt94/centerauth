@@ -468,3 +468,22 @@ async def delete_user_by_id(user_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(user)
     await db.commit()
     return {"success": True, "message": "User deleted successfully"}
+
+from pydantic import BaseModel
+import httpx
+import urllib.parse
+
+class PingRequest(BaseModel):
+    base_url: str
+
+@router.post("/ping-client")
+async def ping_client(req: PingRequest):
+    try:
+        parsed = urllib.parse.urlparse(req.base_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(base)
+            return {"success": True, "message": f"Online ({resp.status_code})"}
+    except Exception as e:
+        return {"success": False, "message": f"Offline"}

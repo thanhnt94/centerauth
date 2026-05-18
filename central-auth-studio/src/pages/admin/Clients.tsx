@@ -35,7 +35,7 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
     };
 
     try {
-      const url = client ? `/admin/api/clients/${client.id}` : '/admin/clients/add';
+      const url = client ? `/admin/api/clients/${client.id}` : '/admin/api/clients';
       const method = client ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,

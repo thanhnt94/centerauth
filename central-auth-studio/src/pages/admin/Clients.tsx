@@ -150,7 +150,11 @@ export const Clients: React.FC = () => {
       const res = await fetch('/admin/api/ping-client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base_url: client.redirect_uri.split(',')[0] })
+        body: JSON.stringify({ 
+          base_url: client.redirect_uri.split(',')[0],
+          client_id: client.client_id,
+          expected_secret: client.client_secret
+        })
       });
       const data = await res.json();
       setClientStatuses(prev => ({ 

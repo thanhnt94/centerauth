@@ -524,16 +524,52 @@ import urllib.parse
 
 class PingRequest(BaseModel):
     base_url: str
+    client_id: str = None
+    expected_secret: str = None
 
 @router.post("/ping-client")
 async def ping_client(req: PingRequest):
     try:
+        # Step 1: Verify secret via DB scan if provided
+        if req.client_id and req.expected_secret:
+            conn, sso_col = get_satellite_db_connection(req.client_id)
+            if not conn:
+                return {"success": False, "message": "Satellite DB not found in Storage"}
+                
+            try:
+                cursor = conn.cursor()
+                actual_secret = None
+                
+                # Check Pattern 1: sso_settings
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sso_settings'")
+                if cursor.fetchone():
+                    cursor.execute("SELECT client_secret FROM sso_settings LIMIT 1")
+                    row = cursor.fetchone()
+                    if row: actual_secret = row[0]
+                
+                # Check Pattern 2: system_settings
+                if not actual_secret:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
+                    if cursor.fetchone():
+                        cursor.execute("SELECT value FROM system_settings WHERE key = 'CENTRAL_AUTH_CLIENT_SECRET'")
+                        row = cursor.fetchone()
+                        if row: actual_secret = row[0]
+                
+                conn.close()
+                
+                if actual_secret != req.expected_secret:
+                    return {"success": False, "message": "Secret Mismatch"}
+            except Exception as e:
+                if conn: conn.close()
+                return {"success": False, "message": f"DB verification error: {e}"}
+
+        # Step 2: HTTP Ping
         parsed = urllib.parse.urlparse(req.base_url)
         base = f"{parsed.scheme}://{parsed.netloc}"
         
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(base)
-            return {"success": True, "message": f"Online ({resp.status_code})"}
+            return {"success": True, "message": f"Paired & Online ({resp.status_code})"}
     except Exception as e:
         return {"success": False, "message": f"Offline"}
 

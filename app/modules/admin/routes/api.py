@@ -12,32 +12,80 @@ import os
 
 router = APIRouter(prefix="/admin/api", tags=["Admin API"])
 
-CLIENT_DB_MAP = {
-    "quizmind-v1": {"db": "quizmind.db", "sso_col": "sso_id"},
-    "podlearn-v1": {"db": "PodLearn.db", "sso_col": "central_auth_id"},
-    "vocaburn-v1": {"db": "vocaburn.db", "sso_col": "central_auth_id"},
-    "reminote-v1": {"db": "reminote.db", "sso_col": "sso_user_id"},
-}
-
 def get_satellite_db_connection(client_id: str):
-    mapping = CLIENT_DB_MAP.get(client_id)
-    if not mapping:
+    storage_dir = os.path.abspath(os.path.join(settings.BASE_DIR, "..", "Storage", "database"))
+    
+    db_path = None
+    conn = None
+    
+    # Deep Auto-Discovery: Scan all DBs and look inside their settings tables
+    if os.path.exists(storage_dir):
+        for file in os.listdir(storage_dir):
+            if file.lower().endswith(".db") or file.lower().endswith(".sqlite"):
+                temp_path = os.path.join(storage_dir, file)
+                try:
+                    temp_conn = sqlite3.connect(temp_path)
+                    cursor = temp_conn.cursor()
+                    
+                    # Pattern 1: sso_settings table (QuizMind, PodLearn, Vocaburn)
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sso_settings'")
+                    if cursor.fetchone():
+                        cursor.execute("SELECT client_id FROM sso_settings LIMIT 1")
+                        row = cursor.fetchone()
+                        if row and row[0] == client_id:
+                            db_path = temp_path
+                            temp_conn.close()
+                            break
+                            
+                    # Pattern 2: system_settings table key-value (RemiNote)
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
+                    if cursor.fetchone():
+                        cursor.execute("SELECT value FROM system_settings WHERE key = 'CENTRAL_AUTH_CLIENT_ID'")
+                        row = cursor.fetchone()
+                        if row and row[0] == client_id:
+                            db_path = temp_path
+                            temp_conn.close()
+                            break
+                            
+                    temp_conn.close()
+                except Exception:
+                    pass
+                    
+    if not db_path:
         return None, None
-    db_path = os.path.join(settings.STORAGE_DIR, mapping["db"])
-    if not os.path.exists(db_path):
-        # Fallback 1: Ecosystem root check (e.g. for vocaburn.db)
-        fallback = os.path.abspath(os.path.join(settings.BASE_DIR, "..", "..", mapping["db"]))
-        if os.path.exists(fallback):
-            db_path = fallback
-        else:
-            # Fallback 2: Storage/database check
-            fallback_storage = os.path.abspath(os.path.join(settings.BASE_DIR, "..", "Storage", "database", mapping["db"]))
-            if os.path.exists(fallback_storage):
-                db_path = fallback_storage
-            else:
-                return None, None
-    conn = sqlite3.connect(db_path)
-    return conn, mapping["sso_col"]
+        
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Auto-discover user table
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = [t[0].lower() for t in cursor.fetchall()]
+        user_table = "users" if "users" in tables else "user" if "user" in tables else None
+        
+        if not user_table:
+            conn.close()
+            return None, None
+            
+        # Auto-discover SSO column mapping
+        cursor.execute(f"PRAGMA table_info({user_table});")
+        cols = [c[1].lower() for c in cursor.fetchall()]
+        
+        sso_col = None
+        possible_sso_cols = ["sso_id", "central_auth_id", "sso_user_id"]
+        for col in cols:
+            if col in possible_sso_cols:
+                sso_col = col
+                break
+                
+        if not sso_col:
+            conn.close()
+            return None, None
+            
+        return conn, sso_col
+    except Exception as e:
+        print(f"[!] Dynamic Discovery Error for {client_id}: {e}")
+        return None, None
 
 @router.post("/clients")
 async def add_client(request: Request, db: AsyncSession = Depends(get_db)):

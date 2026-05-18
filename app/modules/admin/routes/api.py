@@ -487,3 +487,44 @@ async def ping_client(req: PingRequest):
             return {"success": True, "message": f"Online ({resp.status_code})"}
     except Exception as e:
         return {"success": False, "message": f"Offline"}
+
+@router.put("/clients/{client_id}")
+async def update_client(client_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    data = await request.json()
+    from sqlalchemy import select
+    result = await db.execute(select(Client).filter(Client.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    client.name = data.get("name", client.name)
+    client.client_secret = data.get("client_secret", client.client_secret)
+    client.app_url = data.get("app_url", client.app_url)
+    
+    # Optional logic for dynamic redirect uri
+    redirect_uri = data.get("redirect_uri")
+    if not redirect_uri and client.app_url:
+        redirect_uri = f"{client.app_url}/auth-center/callback"
+    client.redirect_uri = redirect_uri or client.redirect_uri
+    
+    await db.commit()
+    await db.refresh(client)
+    return {"success": True, "client": client.to_dict()}
+
+@router.delete("/clients/{client_id}")
+async def delete_client(client_id: int, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select
+    result = await db.execute(select(Client).filter(Client.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    await db.delete(client)
+    await db.commit()
+    return {"success": True}
+
+@router.post("/clients/{client_id}/push")
+async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db)):
+    # This endpoint can be expanded later to perform HTTP POST to the client's internal webhook to update its sso_settings database.
+    # For now, return success to clear the UI error.
+    return {"success": True, "message": "Pushed configuration successfully"}

@@ -16,6 +16,7 @@ CLIENT_DB_MAP = {
     "quizmind-v1": {"db": "quizmind.db", "sso_col": "sso_id"},
     "podlearn-v1": {"db": "PodLearn.db", "sso_col": "central_auth_id"},
     "vocaburn-v1": {"db": "vocaburn.db", "sso_col": "central_auth_id"},
+    "reminote-v1": {"db": "reminote.db", "sso_col": "sso_user_id"},
 }
 
 def get_satellite_db_connection(client_id: str):

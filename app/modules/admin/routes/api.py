@@ -408,13 +408,14 @@ async def provision_user(request: Request, db: AsyncSession = Depends(get_db)):
     
     return {"success": True, "message": "User provisioned successfully", "user": new_user.to_dict()}
 
-def propagate_user_update_to_satellites(user):
+async def propagate_user_update_to_satellites(user, clients):
     # Rule 4: Real-time update propagation
     # Do not propagate changes for default admin ID 1
     if user.username == "admin" or user.email == "admin@mindstack.click":
         return
         
-    for client_id in CLIENT_DB_MAP:
+    for client in clients:
+        client_id = client.client_id
         conn, sso_col = get_satellite_db_connection(client_id)
         if not conn:
             continue
@@ -498,7 +499,8 @@ async def update_user(user_id: str, request: Request, db: AsyncSession = Depends
     
     # Propagate the updates to linked satellites
     try:
-        propagate_user_update_to_satellites(user)
+        clients = await ClientService.list_active_clients(db)
+        await propagate_user_update_to_satellites(user, clients)
     except Exception as propagation_err:
         print(f"Non-blocking propagation failure: {propagation_err}")
         

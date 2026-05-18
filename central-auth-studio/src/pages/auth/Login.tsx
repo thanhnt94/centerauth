@@ -9,6 +9,31 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
 
+  // Check if session is already active; if so, immediately redirect back to the client or portal
+  React.useEffect(() => {
+    const checkActiveSession = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const clientId = params.get('client_id');
+        
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && !data.error) {
+            if (clientId) {
+              window.location.href = `/api/auth/jump/${clientId}`;
+            } else {
+              window.location.href = '/portal';
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Session check failed:", err);
+      }
+    };
+    checkActiveSession();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);

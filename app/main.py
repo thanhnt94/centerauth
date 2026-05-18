@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
             await UserService.create_user(db, UserCreate(
                 username="admin",
                 password="admin",
-                email="admin@centralauth.com",
+                email="admin@mindstack.click",
                 is_admin=True
             ))
             print("Default admin created: admin / admin")
@@ -62,6 +62,16 @@ DIST_INDEX = os.path.join(STATIC_DIR, "dist", "index.html")
 # Templates for fallback or SSR views
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+# Import and include routers from modules
+from app.modules.identity.routes import api as identity_api
+from app.modules.sso.routes import api as sso_api
+from app.modules.admin.routes import api as admin_api
+
+# Register Routers
+app.include_router(identity_api.router)
+app.include_router(sso_api.router)
+app.include_router(admin_api.router)
+
 # --- SPA Routing (React app for auth, portal, admin) ---
 @app.get("/")
 @app.get("/auth/login")
@@ -74,17 +84,6 @@ async def serve_spa(request: Request):
         from fastapi.responses import FileResponse
         return FileResponse(DIST_INDEX)
     return {"message": "SPA not built. Please run 'npm run build' in central-auth-studio."}
-
-
-# Import and include routers from modules
-from app.modules.identity.routes import api as identity_api
-from app.modules.sso.routes import api as sso_api
-from app.modules.admin.routes import api as admin_api
-
-# Register Routers
-app.include_router(identity_api.router)
-app.include_router(sso_api.router)
-app.include_router(admin_api.router)
 
 # Aliases for SPA compatibility
 @app.get("/api/profile/me")

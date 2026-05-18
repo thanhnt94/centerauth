@@ -8,7 +8,7 @@ from typing import Optional
 
 class OAuthService:
     @staticmethod
-    async def create_auth_code(db: AsyncSession, client_id: str, user_id: int, redirect_uri: str) -> str:
+    async def create_auth_code(db: AsyncSession, client_id: str, user_id: str, redirect_uri: str) -> str:
         code = str(uuid.uuid4())
         expires_at = datetime.utcnow() + timedelta(minutes=10)
         

@@ -1,9 +1,87 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BrainCircuit, Headphones, Flame, BookOpen, ArrowRight, Sparkles, Globe, ChevronRight, ChevronLeft } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  const [appLinks, setAppLinks] = useState<{ [key: string]: string }>({
+    quiz: 'http://localhost:5080',
+    pod: 'http://localhost:5020',
+    vocab: 'http://localhost:5090',
+    note: 'http://localhost:5070'
+  });
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && !data.error) {
+            navigate('/portal');
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Auth check failed:", err);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+    checkSession();
+  }, [navigate]);
+
+  useEffect(() => {
+    const fetchRealLinks = async () => {
+      try {
+        const res = await fetch('/api/auth/portal-apps');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const links: { [key: string]: string } = {};
+            data.forEach((client: any) => {
+              const cid = client.client_id || '';
+              const url = client.app_url || '';
+              if (url) {
+                if (cid.includes('quiz')) links.quiz = url;
+                else if (cid.includes('pod')) links.pod = url;
+                else if (cid.includes('vocab')) links.vocab = url;
+                else if (cid.includes('remi') || cid.includes('note')) links.note = url;
+              }
+            });
+            setAppLinks(prev => ({ ...prev, ...links }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch landing app URLs:", err);
+      }
+    };
+    fetchRealLinks();
+  }, []);
+
+  const getDomainLink = (subdomain: string, fallback: string) => {
+    if (appLinks[subdomain]) return appLinks[subdomain];
+
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      if (subdomain === 'quiz') return 'http://localhost:5080';
+      if (subdomain === 'pod') return 'http://localhost:5020';
+      if (subdomain === 'vocab') return 'http://localhost:5090';
+      if (subdomain === 'note') return 'http://localhost:5070';
+    }
+    
+    // Otherwise, dynamically determine domain
+    const parts = window.location.hostname.split('.');
+    if (parts.length >= 2) {
+      const mainDomain = parts.slice(-2).join('.');
+      return `http://${subdomain}.${mainDomain}`;
+    }
+    return fallback;
+  };
+
   const apps = [
     {
       id: 'quiz',
@@ -15,7 +93,7 @@ export const LandingPage: React.FC = () => {
       gradient: 'from-blue-500 to-indigo-500',
       bgLight: 'bg-blue-50',
       textAccent: 'text-blue-600',
-      link: 'http://quiz.mindstack.click'
+      link: getDomainLink('quiz', 'http://quiz.mindstack.click')
     },
     {
       id: 'pod',
@@ -27,7 +105,7 @@ export const LandingPage: React.FC = () => {
       gradient: 'from-pink-500 to-rose-500',
       bgLight: 'bg-pink-50',
       textAccent: 'text-pink-600',
-      link: 'http://pod.mindstack.click'
+      link: getDomainLink('pod', 'http://pod.mindstack.click')
     },
     {
       id: 'vocab',
@@ -39,7 +117,7 @@ export const LandingPage: React.FC = () => {
       gradient: 'from-orange-500 to-amber-500',
       bgLight: 'bg-orange-50',
       textAccent: 'text-orange-600',
-      link: 'http://vocab.mindstack.click'
+      link: getDomainLink('vocab', 'http://vocab.mindstack.click')
     },
     {
       id: 'note',
@@ -51,7 +129,7 @@ export const LandingPage: React.FC = () => {
       gradient: 'from-emerald-500 to-teal-500',
       bgLight: 'bg-emerald-50',
       textAccent: 'text-emerald-600',
-      link: 'http://note.mindstack.click'
+      link: getDomainLink('note', 'http://note.mindstack.click')
     }
   ];
 
@@ -84,6 +162,17 @@ export const LandingPage: React.FC = () => {
       });
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-[#0b0f19] text-white flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 rounded-full border-4 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+          <span className="text-gray-400 text-sm font-medium animate-pulse">Initializing Identity Hub...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[100dvh] w-full bg-slate-50 flex flex-col overflow-hidden font-sans text-slate-900 selection:bg-indigo-200 relative">

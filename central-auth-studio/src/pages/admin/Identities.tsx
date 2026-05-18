@@ -14,6 +14,14 @@ export const Identities: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [adminResetPassword, setAdminResetPassword] = useState('');
+  
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newFullName, setNewFullName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('user');
+  const [newIsActive, setNewIsActive] = useState(true);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -46,7 +54,7 @@ export const Identities: React.FC = () => {
           <h2 className="text-3xl font-black text-white tracking-tight">Identity Hub</h2>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-2">Centralized member directories & permissions</p>
         </div>
-        <button className="btn-primary flex items-center gap-3">
+        <button onClick={() => setIsAddModalOpen(true)} className="btn-primary flex items-center gap-3">
           <UserPlus size={20} />
           <span>Provision User</span>
         </button>
@@ -124,7 +132,22 @@ export const Identities: React.FC = () => {
                 <td className="px-10 py-8 text-right">
                   <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform group-hover:translate-x-0 translate-x-4">
                     <button onClick={() => { setSelectedUser(user); setIsEditModalOpen(true); }} className="p-3 rounded-2xl bg-white/5 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-all"><Edit2 size={16} /></button>
-                    <button className="p-3 rounded-2xl bg-white/5 hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={16} /></button>
+                    <button 
+                      onClick={async () => {
+                        if (confirm(`Bạn có chắc chắn muốn xóa user ${user.username} không?`)) {
+                          try {
+                            const res = await fetch(`/admin/api/users/${user.id}`, { method: 'DELETE' });
+                            if (!res.ok) throw new Error('Delete failed');
+                            fetchUsers();
+                          } catch (err) {
+                            alert('Không thể xóa user.');
+                          }
+                        }
+                      }}
+                      className="p-3 rounded-2xl bg-white/5 hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -237,6 +260,138 @@ export const Identities: React.FC = () => {
                   <div className="pt-6 border-t border-white/5 mt-6">
                     <button type="submit" className="w-full btn-primary h-14 text-sm flex justify-center items-center gap-2">
                        <CheckCircle2 size={18} /> Commit Changes
+                    </button>
+                  </div>
+               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+            <motion.div 
+               initial={{ scale: 0.9, opacity: 0 }}
+               animate={{ scale: 1, opacity: 1 }}
+               exit={{ scale: 0.9, opacity: 0 }}
+               className="glass p-10 rounded-[3.5rem] w-full max-w-lg border border-white/10 relative"
+            >
+               <button onClick={() => setIsAddModalOpen(false)} className="absolute top-8 right-8 p-3 hover:bg-white/5 rounded-2xl transition-all">
+                 <X size={20} className="text-slate-500" />
+               </button>
+               
+               <div className="mb-8">
+                 <h3 className="text-2xl font-black text-white uppercase tracking-tight">Provision Identity</h3>
+                 <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-2 flex items-center gap-2">
+                    <Fingerprint size={12} /> Registering a new global member
+                 </p>
+               </div>
+
+               <form onSubmit={async (e) => {
+                 e.preventDefault();
+                 try {
+                   const res = await fetch(`/admin/api/users`, {
+                     method: 'POST',
+                     headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({
+                       username: newUsername,
+                       email: newEmail,
+                       password: newPassword,
+                       full_name: newFullName,
+                       role: newRole,
+                       is_active: newIsActive
+                     })
+                   });
+                   const data = await res.json();
+                   if (!res.ok) throw new Error(data.message || 'Provision failed');
+                   
+                   setIsAddModalOpen(false);
+                   setNewUsername('');
+                   setNewEmail('');
+                   setNewFullName('');
+                   setNewPassword('');
+                   setNewRole('user');
+                   setNewIsActive(true);
+                   fetchUsers(); // Refresh the list
+                 } catch (err: any) {
+                   alert(err.message || "Thao tác thất bại.");
+                 }
+               }} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Username *</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newUsername} 
+                      onChange={e => setNewUsername(e.target.value)}
+                      placeholder="e.g. johndoe"
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500/50 transition-all text-white font-sans" 
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Full Name</label>
+                    <input 
+                      type="text" 
+                      value={newFullName} 
+                      onChange={e => setNewFullName(e.target.value)}
+                      placeholder="e.g. John Doe"
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500/50 transition-all text-white font-sans" 
+                    />
+                  </div>
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Email Address *</label>
+                    <input 
+                      type="email" 
+                      required
+                      value={newEmail} 
+                      onChange={e => setNewEmail(e.target.value)}
+                      placeholder="john@example.com"
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500/50 transition-all text-white font-sans" 
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Initial Password *</label>
+                    <input 
+                      type="password" 
+                      required
+                      value={newPassword} 
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500/50 transition-all text-white font-sans" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Auth Role</label>
+                      <select 
+                        value={newRole} 
+                        onChange={e => setNewRole(e.target.value)}
+                        className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500/50 text-white appearance-none h-[54px] font-sans"
+                      >
+                        <option value="user">Standard User</option>
+                        <option value="admin">Administrator</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Access Status</label>
+                      <select 
+                        value={newIsActive ? 'active' : 'suspended'} 
+                        onChange={e => setNewIsActive(e.target.value === 'active')}
+                        className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500/50 text-white appearance-none h-[54px] font-sans"
+                      >
+                         <option value="active">Active (Granted)</option>
+                         <option value="suspended">Suspended (Denied)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5 mt-6">
+                    <button type="submit" className="w-full btn-primary h-14 text-sm flex justify-center items-center gap-2">
+                       <CheckCircle2 size={18} /> Provision User
                     </button>
                   </div>
                </form>

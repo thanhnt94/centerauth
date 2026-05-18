@@ -18,16 +18,8 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
   useEffect(() => {
     if (appUrl && appUrl.startsWith('http')) {
       const normalizedUrl = appUrl.replace(/\/+$/, ''); // Remove trailing slashes
-      
-      // Auto-fill Redirect URI if empty or matching old pattern
-      if (!redirectUri || redirectUri.includes('/auth-center/callback')) {
-        setRedirectUri(`${normalizedUrl}/auth-center/callback`);
-      }
-      
-      // Auto-fill Backchannel if empty or matching old pattern
-      if (!backchannelUri || backchannelUri.includes('/auth-center/webhook')) {
-        setBackchannelUri(`${normalizedUrl}/auth-center/webhook/backchannel-log`);
-      }
+      setRedirectUri(`${normalizedUrl}/auth-center/callback`);
+      setBackchannelUri(`${normalizedUrl}/auth-center/webhook/backchannel-log`);
     }
   }, [appUrl]);
 
@@ -98,16 +90,6 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
         <div className="space-y-1">
           <label className="text-[10px] font-black uppercase text-slate-500">Client Secret</label>
           <input value={clientSecret} onChange={e => setClientSecret(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500/50" />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[10px] font-black uppercase text-slate-500">Redirect URIs (comma separated)</label>
-          <input value={redirectUri} onChange={e => setRedirectUri(e.target.value)} required className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500/50" />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[10px] font-black uppercase text-slate-500">Backchannel Logout URI (Smart-Sync Active)</label>
-          <input value={backchannelUri} onChange={e => setBackchannelUri(e.target.value)} className="w-full bg-white/10 border border-indigo-500/30 rounded-2xl p-4 text-sm text-indigo-300 outline-none focus:border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.1)]" placeholder="Auto-completes from redirect URI..." />
         </div>
 
         <button type="submit" className="w-full btn-primary py-4 mt-4 font-black uppercase tracking-widest text-xs">

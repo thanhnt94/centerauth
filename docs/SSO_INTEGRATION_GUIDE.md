@@ -1,11 +1,13 @@
 # 🔐 CentralAuth SSO Integration Guide
 
-> **Version 2.0** — Cập nhật ngày 15/05/2026
-> Hướng dẫn tích hợp Single Sign-On cho các ứng dụng vệ tinh trong hệ sinh thái MindStack.
+> **Version 3.0** — Cập nhật ngày 19/05/2026
+> Hướng dẫn tích hợp Single Sign-On thế hệ mới dựa trên Client-Side React SPA cho các ứng dụng vệ tinh trong hệ sinh thái MindStack.
 
 ---
 
 ## 📐 Kiến trúc tổng quan
+
+Trong kiến trúc Hybrid SPA thế hệ mới, luồng điều hướng SSO được thực hiện hoàn toàn ở phía Client (Frontend React) thay vì redirect ở phía Server. Cách tiếp cận này giúp bảo toàn trải nghiệm mượt mà của SPA và tương thích tuyệt đối với các ứng dụng Mobile / Web App hiện đại.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -25,18 +27,18 @@
 │  GET  /api/auth/verify-token → Xác thực token, trả user data   │
 └──────────────┬──────────────────────────────────────────────────┘
                │
-               │  OAuth2-like Authorization Code Flow
+               │  OAuth2-like Authorization Code Flow (Client-Driven)
                │
 ┌──────────────▼──────────────────────────────────────────────────┐
 │              App vệ tinh (VD: QuizMind, Port 5080)              │
 │                                                                 │
-│  /login              → Forced SSO redirect (hoặc backdoor)      │
+│  /login              → Client-side Auto SSO redirect (hoặc backdoor) │
 │  /auth-center/callback?code=xxx  → Đổi code, tạo session local │
-│  /logout             → Xóa cookie local + logout CentralAuth   │
+│  /logout             → POST API → xóa cookie local + CA logout │
 │                                                                 │
 │  API:                                                           │
-│  GET  /api/sso/config    → Xem cấu hình SSO hiện tại           │
-│  POST /api/sso/config    → Cập nhật cấu hình SSO               │
+│  GET  /api/auth/config   → Lấy cấu hình SSO phục vụ auto-redirect│
+│  POST /api/admin/sso     → Cập nhật & đồng bộ cấu hình SSO     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,319 +50,276 @@
 |---|---|
 | **Backend (cả 2)** | FastAPI + SQLAlchemy Async + SQLite (WAL mode) |
 | **CentralAuth Frontend** | React + TypeScript + Vite + TailwindCSS |
-| **CentralAuth Landing Page** | Jinja2 Template (HTML/CSS tĩnh, dễ custom) |
-| **App vệ tinh Frontend** | Jinja2 Templates (SSR) |
+| **App vệ tinh Frontend** | React + TypeScript + Vite + TailwindCSS (hoặc Next.js) |
 | **Mã hóa mật khẩu** | Werkzeug (scrypt/PBKDF2) — **thống nhất toàn hệ thống** |
 | **Session CentralAuth** | JWT (PyJWT), cookie `session_token`, httponly |
-| **Session App vệ tinh** | Cookie `user_id`, httponly |
-| **Giao tiếp giữa các app** | httpx (async HTTP client) |
-| **Cấu hình SSO** | Database-driven (`SSOConfig` model), không dùng `.env` |
+| **Session App vệ tinh** | Cookie `access_token` hoặc `user_id`, httponly |
+| **Cấu hình SSO** | Dual-Store DB-driven (`SystemConfig` & `SSOConfig`), tự động đồng bộ |
 
 ---
 
-## 🔄 Luồng đăng nhập (Login Flow)
+## 🔄 Luồng đăng nhập (Client-Side Auto-Redirect Flow)
 
 ```
-User truy cập QuizMind
+User truy cập QuizMind/RemiNote /login
         │
         ▼
-   GET /login
+   React Component LoginPage mount
         │
-        ├── Đã đăng nhập (có cookie user_id)? → Redirect /
+        ├── Gọi API GET /api/auth/config
         │
-        ├── SSO bật + không có ?backdoor + không có ?error?
+        ├── SSO bật + không có ?backdoor=1 (hoặc ?fallback=1) + không lỗi?
         │       │
         │       ▼
-        │   Redirect → CentralAuth /api/auth/jump/quizmind-v1
+        │   Thiết lập window.location.href = config.jump_url
+        │       │ (Redirect tức thời sang CentralAuth mà không cần click nút)
         │       │
         │       ├── Đã đăng nhập CA? → Tạo auth code → Redirect về
-        │       │       QuizMind /auth-center/callback?code=xxx
+        │       │       App callback (/auth-center/callback?code=xxx)
         │       │
-        │       └── Chưa đăng nhập CA? → Redirect /auth/login?client_id=quizmind-v1
-        │               │
-        │               ▼
-        │           User nhập username/password tại CentralAuth
-        │               │
-        │               ▼
-        │           POST /api/auth/login (kèm client_id)
-        │               │
-        │               ▼
-        │           Trả về { redirect: "/api/auth/jump/quizmind-v1" }
-        │               │
-        │               ▼
-        │           Tạo auth code → Redirect về QuizMind callback
+        │       └── Chưa đăng nhập CA? → Redirect về trang đăng nhập của CentralAuth
         │
         ▼
-   GET /auth-center/callback?code=xxx
+    (Nếu có ?backdoor=1 hoặc SSO tắt)
+   Hiển thị Form đăng nhập nội bộ (Local Login)
         │
         ▼
-   QuizMind gọi CentralAuth API:
-     1. POST /api/auth/token    (đổi code → access_token)
-     2. GET  /api/auth/verify-token (lấy user data + password_hash)
-        │
-        ▼
-   Sync user vào DB local (tạo mới hoặc liên kết sso_id)
-        │
-        ▼
-   Set cookie user_id → Redirect / → Dashboard
+   Post thông tin đăng nhập lên /api/auth/login kèm: is_backdoor = true
 ```
 
 ---
 
-## 🔄 Luồng đăng xuất (Logout Flow)
+## 🔄 Luồng đăng xuất (Global SSO Logout Flow)
+
+Để đảm bảo an toàn, khi người dùng đăng xuất tại bất kỳ hệ thống vệ tinh nào, hệ thống phải thực hiện **Đăng xuất toàn cầu (Global Signout)** ở cả app vệ tinh lẫn CentralAuth:
 
 ```
-User nhấn Logout tại QuizMind
+User nhấn Logout tại App vệ tinh
         │
         ▼
-   GET /logout
+   Client gửi request POST lên /api/auth/logout
         │
         ▼
-   Xóa cookie user_id (local)
+   Backend xóa cookie access_token (local)
+        │
+        ├── Nếu SSO bật:
+        │   Trả về JSON: { "status": "success", "redirect_url": "http://localhost:5000/auth/logout?client_id=your-client-id" }
+        │
+        └── Nếu SSO tắt:
+            Trả về JSON: { "status": "success", "message": "Logged out" }
         │
         ▼
-   SSO bật? → Redirect CentralAuth /api/auth/logout
-        │
-        ▼
-   CentralAuth xóa cookie session_token
-        │
-        ▼
-   Redirect về Landing Page (/)
-        │
-        ▼
-   User thấy trang chủ CentralAuth — có thể chọn đăng nhập lại
+   Client (React) nhận phản hồi:
+     - Nếu có redirect_url: Thiết lập window.location.href = redirect_url
+     - Nếu không: Chuyển hướng client-side về trang /login
 ```
 
 ---
 
-## 📦 Tích hợp cho App vệ tinh mới
+## 📦 Tích hợp cho App vệ tinh mới (Ví dụ: RemiNote)
 
-### Bước 1: Copy SSO Module
+### Bước 1: Copy SSO Module (Backend SDK)
 
-Copy thư mục `CentralAuth/sdk/sso_module/` vào `your-app/app/modules/sso_module/`:
+Copy thư mục `CentralAuth/sdk/sso_module/` vào thư mục module của app bạn. Đảm bảo cấu trúc import tương thích với SQLAlchemy Async của hệ thống.
 
-```
-your-app/
-├── app/
-│   ├── core/
-│   │   └── db.py          ← phải export: Base, get_db, SessionLocal, engine
-│   ├── modules/
-│   │   ├── auth/
-│   │   │   └── models.py  ← User model cần có trường sso_id
-│   │   └── sso_module/    ← COPY VÀO ĐÂY
-│   │       ├── __init__.py
-│   │       ├── models.py  ← SSOConfig model
-│   │       ├── routes.py  ← Callback + Config API
-│   │       └── service.py ← Token exchange logic
-│   └── main.py
-```
+---
 
-### Bước 2: Sửa import path
+### Bước 2: Khai báo trường `is_backdoor` trong Schema Đăng nhập
 
-Trong `sso_module/models.py`, đảm bảo import đúng:
-```python
-from app.core.db import Base  # Không phải app.core.database
-```
-
-### Bước 3: Thêm trường `sso_id` vào User model
+Trong file Pydantic Schema đăng nhập của bạn (ví dụ: `app/schemas/user.py`), bổ sung trường `is_backdoor` để cho phép phân tách luồng đăng nhập nội bộ:
 
 ```python
-class User(Base):
-    __tablename__ = "users"
-    # ... các trường hiện có ...
-    sso_id = Column(String(255), unique=True, index=True, nullable=True)
+class UserLogin(BaseModel):
+    username: str
+    password: str
+    is_backdoor: bool | None = False  # Bắt buộc để nhận diện đăng nhập backdoor
 ```
 
-### Bước 4: Seed cấu hình SSO trong `init_db.py`
+---
+
+### Bước 3: Cài đặt chặn đăng nhập local khi bật SSO
+
+Trong API đăng nhập local (ví dụ: `/api/auth/login` hoặc `/login`), kiểm tra trạng thái SSO từ database. Nếu SSO đang hoạt động và người dùng **không sử dụng backdoor** hoặc **không phải là quản trị viên**, hãy chặn đăng nhập cục bộ để bảo mật:
 
 ```python
-from app.modules.sso_module.models import SSOConfig
+@router.post("/login", response_model=TokenResponse)
+async def login(data: UserLogin, response: Response, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.username == data.username))
+    user = result.scalar_one_or_none()
 
-# Trong hàm init_db():
-result = await db.execute(select(SSOConfig))
-if not result.scalar_one_or_none():
-    sso_cfg = SSOConfig(
-        is_enabled=True,
-        server_url="http://localhost:5000",
-        client_id="your-app-id",         # Phải khớp với CentralAuth
-        client_secret="your-app-secret"   # Phải khớp với CentralAuth
-    )
-    db.add(sso_cfg)
-    await db.commit()
-```
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-### Bước 5: Đăng ký router trong `main.py`
-
-```python
-from app.modules.sso_module.routes import router as sso_api_router
-
-app.include_router(sso_api_router)  # Không có prefix!
-```
-
-### Bước 6: Cài đặt Forced SSO + Backdoor trong route `/login`
-
-```python
-@app.get("/login")
-async def login_page(request: Request, db: AsyncSession = Depends(get_db)):
-    # 1. Đã đăng nhập? → Về trang chủ
-    current_user = await AuthService.get_current_user(request, db)
-    if current_user:
-        return RedirectResponse(url="/")
-
-    # 2. Kiểm tra SSO
-    from app.modules.sso_module.service import SSOService
-    sso_config = await SSOService.get_config(db)
+    # Kiểm tra SSO
+    config = await get_sso_config(db)
+    sso_enabled = config.get("ENABLE_SSO", "true").lower() == "true"
     
-    error = request.query_params.get("error")
-    is_backdoor = request.query_params.get("backdoor")
-    
-    # 3. SSO bật + không lỗi + không backdoor → Redirect CentralAuth
-    if sso_config.is_enabled and not error and not is_backdoor:
-        return RedirectResponse(
-            url=f"{sso_config.server_url}/api/auth/jump/{sso_config.client_id}"
-        )
-
-    # 4. Hiện form login nội bộ (backdoor / SSO tắt / fallback lỗi)
-    context = {"request": request, "error": error}
-    return templates.TemplateResponse("auth/login.html", context)
+    # Nếu SSO đang bật và không sử dụng backdoor/bypass
+    if sso_enabled and not data.is_backdoor:
+        if not user.is_admin:  # Chỉ cho phép tài khoản Admin thực hiện backdoor
+            raise HTTPException(
+                status_code=403,
+                detail="Security Alert: SSO is active. Local login bypass is strictly restricted to Administrators only."
+            )
+            
+    # Tiến hành xác thực mật khẩu như bình thường...
 ```
 
-> ⚠️ **QUAN TRỌNG**: Không tạo route `/login` trong `sso_module/routes.py`!
-> Route `/login` chỉ được khai báo trong `main.py` để tránh xung đột.
+---
 
-### Bước 7: Cài đặt Logout liên hệ thống
+### Bước 4: Khai báo API `/api/auth/config` phục vụ Frontend
+
+Tạo một endpoint công khai để phía React client truy vấn cấu hình SSO:
 
 ```python
-@app.get("/logout")
-async def logout(request: Request, db: AsyncSession = Depends(get_db)):
-    from app.modules.sso_module.service import SSOService
-    sso_config = await SSOService.get_config(db)
+@router.get("/config")
+async def get_auth_config(db: AsyncSession = Depends(get_db)):
+    """Public authentication configuration for client auto-redirect."""
+    config = await get_sso_config(db)
+    sso_enabled = config.get("ENABLE_SSO", "true").lower() == "true"
+    server_url = config.get("CENTRAL_AUTH_URL", "http://localhost:5000").rstrip('/')
+    client_id = config.get("CENTRAL_AUTH_CLIENT_ID", "your-app-v1")
     
-    if sso_config.is_enabled:
-        # Xóa cookie local + logout CentralAuth → về Landing Page
-        ca_logout_url = f"{sso_config.server_url}/api/auth/logout"
-        response = RedirectResponse(url=ca_logout_url, status_code=303)
-    else:
-        response = RedirectResponse(url="/login", status_code=303)
+    base_url = "http://127.0.0.1:5070"  # Địa chỉ của App vệ tinh
+    redirect_uri = f"{base_url}/auth-center/callback"
+    jump_url = (
+        f"{server_url}/api/auth/authorize"
+        f"?client_id={client_id}"
+        f"&redirect_uri={redirect_uri}"
+        f"&response_type=code"
+    ) if sso_enabled else None
+
+    return {
+        "auth_provider": "central" if sso_enabled else "local",
+        "sso_enabled": sso_enabled,
+        "jump_url": jump_url
+    }
+```
+
+---
+
+### Bước 5: Cài đặt API Đăng xuất Đa hệ thống (Logout Redirect)
+
+Sửa đổi hàm logout backend của bạn để tự động trả về đường dẫn logout của CentralAuth khi SSO đang được kích hoạt:
+
+```python
+@router.post("/logout")
+async def logout(response: Response, db: AsyncSession = Depends(get_db)):
+    """Clear auth cookie and return SSO redirect URL if active."""
+    response.delete_cookie("access_token")  # Hoặc xóa session cookie local của bạn
     
-    response.delete_cookie("user_id", path="/")
-    return response
-```
-
-### Bước 8: Đăng ký app tại CentralAuth
-
-Dùng Admin Panel hoặc API:
-
-```bash
-curl -X POST http://localhost:5000/admin/api/clients \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Your App Name",
-    "client_id": "your-app-id",
-    "client_secret": "your-app-secret",
-    "app_url": "http://localhost:YOUR_PORT"
-  }'
-```
-
-CentralAuth tự động tạo `redirect_uri` = `{app_url}/auth-center/callback`.
-
-> ⚠️ **`client_secret` phải khớp giữa CentralAuth và app vệ tinh!**
-> Đây là lỗi phổ biến nhất khi tích hợp.
-
----
-
-## 🚪 Admin Backdoor
-
-Backdoor chỉ dành cho **quản trị viên** khi CentralAuth gặp sự cố:
-
-1. Navigate to: `http://your-app-url/login?backdoor=1`
-2. Enter your local admin credentials.
-
-## 🛡️ Chính sách bảo mật Backdoor (Security Policy)
-
-Khi SSO được bật, lối vào Backdoor được thắt chặt bảo mật:
-- **Chỉ dành cho Quản trị viên (Admin):** Chỉ những tài khoản có `role = 'admin'` trong database local mới có thể đăng nhập qua đường này.
-- **User thường:** Nếu cố tình vào link backdoor và đăng nhập bằng tài khoản thường, hệ thống sẽ từ chối và yêu cầu đăng nhập qua SSO. Điều này ngăn chặn việc user lách luật để không dùng SSO.
-
-## 💡 Mẹo sử dụng: Tránh xung đột Session
-
-Vì hệ thống có 2 loại session (Local app và CentralAuth), để tránh việc ghi đè cookie và gây nhầm lẫn khi vừa làm Admin vừa làm User:
-1. **Sử dụng hàng ngày:** Dùng trình duyệt bình thường cho mọi hoạt động SSO.
-2. **Quản trị/Sửa lỗi (Backdoor):** Luôn sử dụng **Tab ẩn danh (Incognito)** khi vào backdoor.
-   - Giúp giữ 2 phiên đăng nhập độc lập (1 cái là User SSO, 1 cái là Admin Backdoor).
-   - Không bị hiện tượng "đá session" khi chuyển đổi giữa các tab.
-
----
-
-## 📋 Checklist tích hợp
-
-- [ ] Copy `sso_module/` vào `app/modules/`
-- [ ] Sửa import path → `app.core.db`
-- [ ] Thêm `sso_id` vào User model
-- [ ] Seed `SSOConfig` trong `init_db.py`
-- [ ] Đăng ký `sso_api_router` (không prefix)
-- [ ] Cài route `/login` với Forced SSO + Backdoor (kèm check Admin-only)
-- [ ] Cài route `/logout` với CentralAuth logout
-- [ ] Đăng ký client tại CentralAuth (client_id + client_secret **khớp**)
-- [ ] Đảm bảo mã hóa mật khẩu dùng **Werkzeug** (không SHA256)
-- [ ] Test luồng: Login → Callback → Dashboard → Logout → Landing Page
-
----
-
-## 🗂️ Cấu trúc CentralAuth
-
-```
-CentralAuth/
-├── app/
-│   ├── core/
-│   │   ├── db.py              ← SQLAlchemy Async engine + session
-│   │   └── config.py          ← Settings (DATABASE_URL, etc.)
-│   ├── modules/
-│   │   ├── identity/          ← User model, auth routes, user service
-│   │   ├── sso/               ← AuthCode model, JWT service, OAuth service
-│   │   ├── clients/           ← Client model (app vệ tinh), client service
-│   │   └── admin/             ← Admin API routes
-│   ├── static/dist/           ← React SPA build output
-│   ├── templates/
-│   │   └── landing.html       ← Landing page tĩnh (tùy chỉnh tại đây)
-│   └── main.py                ← FastAPI app, routing, lifespan
-├── central-auth-studio/       ← React SPA source (Vite + TypeScript)
-├── sdk/
-│   └── sso_module/            ← Template SSO module cho app vệ tinh
-└── run_centralauth.py         ← Entry point (uvicorn, port 5000)
+    config = await get_sso_config(db)
+    sso_enabled = config.get("ENABLE_SSO", "true").lower() == "true"
+    if sso_enabled:
+        server_url = config.get("CENTRAL_AUTH_URL", "http://localhost:5000").rstrip('/')
+        client_id = config.get("CENTRAL_AUTH_CLIENT_ID", "your-app-v1")
+        return {
+            "status": "success",
+            "redirect_url": f"{server_url}/auth/logout?client_id={client_id}"
+        }
+        
+    return {"status": "success", "message": "Logged out"}
 ```
 
 ---
 
-## 📡 API Reference
+### Bước 6: Cài đặt luồng Auto-Redirect và Backdoor phía React Frontend
 
-### CentralAuth API
+Trong file lưu trữ State của bạn (ví dụ: Zustand store `useAuthStore.ts`), tích hợp luồng xử lý:
 
-| Method | Endpoint | Mô tả |
-|--------|----------|--------|
-| `POST` | `/api/auth/login` | Đăng nhập, trả JWT cookie + redirect |
-| `GET` | `/api/auth/me` | Lấy thông tin user từ session |
-| `GET` | `/api/auth/jump/{client_id}` | Tạo auth code, redirect về app |
-| `GET/POST` | `/api/auth/logout?return_to=` | Xóa session, redirect |
-| `POST` | `/api/auth/token` | Đổi auth code → access_token |
-| `GET` | `/api/auth/verify-token` | Xác thực token, trả user data |
-| `GET` | `/api/auth/portal-apps` | Danh sách app đang hoạt động |
-| `GET` | `/api/auth/health` | Health check |
+```typescript
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  loading: true,
+  authConfig: null,
 
-### App vệ tinh API (SSO Module)
+  login: async (username, password, is_backdoor = false) => {
+    const { data } = await api.post('/api/auth/login', { username, password, is_backdoor })
+    set({ user: data.user })
+  },
 
-| Method | Endpoint | Mô tả |
-|--------|----------|--------|
-| `GET` | `/auth-center/callback?code=` | Nhận auth code từ CentralAuth |
-| `GET` | `/api/sso/config` | Xem cấu hình SSO |
-| `POST` | `/api/sso/config` | Cập nhật cấu hình SSO |
+  logout: async () => {
+    try {
+      const { data } = await api.post('/api/auth/logout')
+      set({ user: null })
+      if (data && data.redirect_url) {
+        window.location.href = data.redirect_url // Redirect đăng xuất toàn cầu
+      } else {
+        window.location.href = '/login'
+      }
+    } catch {
+      set({ user: null })
+      window.location.href = '/login'
+    }
+  },
+
+  fetchAuthConfig: async () => {
+    const { data } = await api.get('/api/auth/config')
+    set({ authConfig: data })
+  }
+}))
+```
+
+Trong component trang đăng nhập (`LoginPage.tsx`), áp dụng luồng tự động chuyển hướng:
+
+```typescript
+export default function LoginPage() {
+  const [searchParams] = useSearchParams()
+  const { login, authConfig, fetchAuthConfig } = useAuthStore()
+  const isBackdoor = searchParams.get('backdoor') === '1' || searchParams.get('fallback') === '1'
+
+  // 1. Tải cấu hình SSO lúc mount
+  useEffect(() => {
+    fetchAuthConfig()
+  }, [fetchAuthConfig])
+
+  // 2. Tự động chuyển hướng nếu SSO bật và KHÔNG vào qua đường backdoor
+  useEffect(() => {
+    if (authConfig && authConfig.sso_enabled && !isBackdoor && authConfig.jump_url) {
+      window.location.href = authConfig.jump_url
+    }
+  }, [authConfig, isBackdoor])
+
+  // 3. Form Đăng nhập nội bộ (chỉ hiển thị khi có ?backdoor=1 hoặc khi SSO tắt)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await login(username, password, isBackdoor)
+  }
+}
+```
 
 ---
 
-## 🏷️ Danh sách App đã tích hợp
+### Bước 7: Đăng ký ứng dụng cực kỳ đơn giản tại CentralAuth
 
-| App | client_id | Port | Trạng thái |
-|-----|-----------|------|------------|
-| QuizMind | `quizmind-v1` | 5080 | ✅ Hoàn tất |
-| Vocaburn | `vocaburn-v1` | 5060 | ⏳ Chưa tích hợp |
-| PodLearn | `podlearn-v1` | — | ⏳ Chưa tích hợp |
+Giờ đây việc đăng ký tích hợp ứng dụng tại CentralAuth đã được đơn giản hóa hoàn toàn. Bạn **không cần** phải nhập thủ công các trường phức tạp như *Redirect URIs* hay *Backchannel Logout URI*. Khi tạo Client mới tại màn hình Quản trị CentralAuth, bạn chỉ cần nhập duy nhất:
+
+1. **App Name**: Tên hiển thị của ứng dụng.
+2. **Client ID**: Định danh duy nhất (ví dụ: `reminote-v1`).
+3. **App URL**: Địa chỉ URL chạy thực tế của ứng dụng (ví dụ: `http://localhost:5070` ở local hoặc `https://reminote.mindstack.click` ở production).
+4. **Client Secret**: Mã khóa bí mật.
+
+Hệ thống CentralAuth sẽ **tự động tính toán chuẩn hóa** các endpoint callback và webhook tương ứng dựa trên `App URL` bạn đã khai báo để thực hiện đồng bộ session và logout một cách liền mạch!
+
+---
+
+## 🚪 Admin Backdoor & Security Policies
+
+* **Đường dẫn Backdoor:** `http://your-app-url/login?backdoor=1` (hoặc `?fallback=1`)
+* **Chính sách bảo mật Backdoor:**
+  * **Chỉ tài khoản Admin:** Chỉ các tài khoản có flag `is_admin = True` hoặc `role = 'admin'` mới được phép đăng nhập thông qua Form local khi SSO đang hoạt động.
+  * **Chặn User thường:** Nếu người dùng thông thường cố gắng sử dụng form backdoor để né tránh việc ghi nhận SSO, backend sẽ ngay lập tức trả về lỗi từ chối truy cập `403 Forbidden`.
+* **Tránh xung đột phiên đăng nhập:** Khi kiểm tra hệ thống và vừa làm Admin local, vừa làm User thường trên SSO, hãy luôn mở link Backdoor bằng **Tab ẩn danh (Incognito Mode)** để tránh việc ghi đè Cookie giữa hai phiên đăng nhập độc lập.
+
+---
+
+## 📋 Checklist tích hợp nhanh cho nhà phát triển
+
+- [ ] Đồng bộ hóa database: Bổ sung trường liên kết SSO của User.
+- [ ] Backend: Thêm trường `is_backdoor` vào schema `/login` và áp dụng logic chặn user thường nếu SSO bật.
+- [ ] Backend: Tạo API GET `/api/auth/config` trả về đúng cấu trúc.
+- [ ] Backend: Cập nhật POST `/api/auth/logout` trả về `redirect_url` của CentralAuth.
+- [ ] Frontend: Gọi `fetchAuthConfig` khi render màn hình Đăng nhập.
+- [ ] Frontend: Tự động thiết lập `window.location.href = config.jump_url` nếu SSO bật và không có backdoor.
+- [ ] Đăng ký Client trên CentralAuth (Chỉ cần điền App URL, các URI callback được tính toán tự động).
+- [ ] Kiểm nghiệm: Bật SSO -> Tự động chuyển hướng. Tắt SSO -> Form đăng nhập cục bộ hiện ngay lập tức. Đăng xuất -> Đăng xuất sạch sẽ cả 2 hệ thống.

@@ -97,7 +97,7 @@ export const Portal: React.FC = () => {
         ) : clients.map((app, idx) => (
           <motion.a
             key={app.id}
-            href={app.redirect_uri.split(',')[0]}
+            href={`/api/auth/jump/${app.client_id}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.1 }}

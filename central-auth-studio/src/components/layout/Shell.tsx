@@ -25,16 +25,23 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     // Fetch dynamic user info
     fetch('/api/auth/me')
       .then(async res => {
+        if (res.status === 401) {
+          window.location.href = '/auth/login';
+          return;
+        }
         if (!res.ok) throw new Error('Identity fetch failed');
         return res.json();
       })
       .then(data => {
-        if (!data.error) setUser(data);
+        if (data && !data.error) {
+          setUser(data);
+        } else {
+          window.location.href = '/auth/login';
+        }
       })
       .catch(err => {
         console.error('Failed to fetch user:', err);
-        // Fallback to anonymous state if API fails
-        setUser({ username: 'Unidentified', role: 'Explorer', avatar_initial: '?' });
+        window.location.href = '/auth/login';
       });
 
     return () => window.removeEventListener('scroll', handleScroll);

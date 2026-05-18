@@ -36,6 +36,10 @@ async def login(
         password = form_data.get("password")
         client_id = form_data.get("client_id")
 
+    # Fallback to query parameters if client_id is not in body
+    if not client_id:
+        client_id = request.query_params.get("client_id")
+
     user = await UserService.get_user_by_username(db, username)
     if not user or not user.check_password(password):
         return fastapi.responses.JSONResponse(
@@ -75,15 +79,24 @@ async def login(
 async def me(request: Request, db: AsyncSession = Depends(get_db)):
     token = request.cookies.get("session_token")
     if not token:
-        return {"error": "Unauthorized"}, 401
+        return fastapi.responses.JSONResponse(
+            content={"error": "Unauthorized"},
+            status_code=401
+        )
     
     payload = JWTService.verify_token(token)
     if not payload:
-        return {"error": "Invalid session"}, 401
+        return fastapi.responses.JSONResponse(
+            content={"error": "Invalid session"},
+            status_code=401
+        )
     
     user = await UserService.get_user_by_id(db, payload["sub"])
     if not user:
-        return {"error": "User not found"}, 404
+        return fastapi.responses.JSONResponse(
+            content={"error": "User not found"},
+            status_code=404
+        )
     
     return {
         "id": user.id,

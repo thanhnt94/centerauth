@@ -303,6 +303,62 @@ Hệ thống CentralAuth sẽ **tự động tính toán chuẩn hóa** các end
 
 ---
 
+### Bước 8: Cài đặt Handshake API để đồng bộ hóa Database tự động
+
+Để hỗ trợ tính năng đồng bộ hóa và quản lý tài khoản người dùng trực tiếp từ bảng điều khiển CentralAuth (Admin Hub) mà không cần cấu hình cứng vị trí Database của vệ tinh trên Server, ứng dụng vệ tinh **bắt buộc** phải cung cấp một API Handshake bảo mật để Hub có thể truy vấn và kết nối Database động.
+
+#### Cài đặt Endpoint `/api/admin/sso/handshake`
+
+Khai báo API nhận vào thông tin xác thực Client ID & Secret, kiểm tra tính hợp lệ và trả về đường dẫn tuyệt đối của file Database:
+
+```python
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session # hoặc AsyncSession
+# Import settings và get_db từ core của dự án của bạn
+
+router = APIRouter()
+
+class HandshakeRequest(BaseModel):
+    client_id: str
+    client_secret: str
+
+@router.post("/api/admin/sso/handshake")
+def sso_handshake(req: HandshakeRequest, db: Session = Depends(get_db)):
+    """Dynamic DB discovery endpoint for CentralAuth Hub."""
+    # 1. Lấy thông tin cấu hình SSO hiện tại (từ DB hoặc file env)
+    config = get_sso_config(db) 
+    
+    expected_client_id = config.client_id
+    expected_client_secret = config.client_secret
+    
+    # 2. Xác thực credentials
+    if expected_client_id != req.client_id:
+        raise HTTPException(status_code=401, detail="Client ID mismatch")
+        
+    if expected_client_secret != req.client_secret:
+        raise HTTPException(status_code=401, detail="Client Secret mismatch")
+        
+    # 3. Trích xuất đường dẫn file Database tuyệt đối
+    # Ví dụ: từ sqlite:///../Storage/database/PodLearn.db
+    db_url = settings.DATABASE_URL
+    import os
+    db_path = db_url.split("///")[-1] if "///" in db_url else db_url
+    if not os.path.isabs(db_path):
+        # Resolve thành đường dẫn tuyệt đối dựa trên thư mục gốc dự án
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        db_path = os.path.abspath(os.path.join(project_root, db_path))
+        
+    return {
+        "success": True,
+        "db_path": db_path
+    }
+```
+
+Endpoint này sẽ được CentralAuth gọi tự động mỗi khi Admin kích hoạt tính năng **Đồng bộ hóa tài khoản** hoặc **Kiểm tra trạng thái liên kết (Pairing)**.
+
+---
+
 ## 🚪 Admin Backdoor & Security Policies
 
 * **Đường dẫn Backdoor:** `http://your-app-url/login?backdoor=1` (hoặc `?fallback=1`)
@@ -322,4 +378,5 @@ Hệ thống CentralAuth sẽ **tự động tính toán chuẩn hóa** các end
 - [ ] Frontend: Gọi `fetchAuthConfig` khi render màn hình Đăng nhập.
 - [ ] Frontend: Tự động thiết lập `window.location.href = config.jump_url` nếu SSO bật và không có backdoor.
 - [ ] Đăng ký Client trên CentralAuth (Chỉ cần điền App URL, các URI callback được tính toán tự động).
-- [ ] Kiểm nghiệm: Bật SSO -> Tự động chuyển hướng. Tắt SSO -> Form đăng nhập cục bộ hiện ngay lập tức. Đăng xuất -> Đăng xuất sạch sẽ cả 2 hệ thống.
+- [ ] Cài đặt endpoint `/api/admin/sso/handshake` trả về absolute `db_path` khi verify thành công.
+- [ ] Kiểm nghiệm: Bật SSO -> Tự động chuyển hướng. Tắt SSO -> Form đăng nhập cục bộ hiện ngay lập tức. Đăng xuất -> Đăng xuất sạch sẽ cả 2 hệ thống. Bấm Pairing -> Xác nhận kết nối DB thành công.

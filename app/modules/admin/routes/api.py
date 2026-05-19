@@ -12,46 +12,34 @@ import os
 
 router = APIRouter(prefix="/admin/api", tags=["Admin API"])
 
-def get_satellite_db_connection(client_id: str):
-    storage_dir = os.path.abspath(os.path.join(settings.BASE_DIR, "..", "Storage", "database"))
-    
+import httpx
+import urllib.parse
+
+async def get_satellite_db_connection(client: Client):
     db_path = None
     conn = None
     
-    # Deep Auto-Discovery: Scan all DBs and look inside their settings tables
-    if os.path.exists(storage_dir):
-        for file in os.listdir(storage_dir):
-            if file.lower().endswith(".db") or file.lower().endswith(".sqlite"):
-                temp_path = os.path.join(storage_dir, file)
-                try:
-                    temp_conn = sqlite3.connect(temp_path)
-                    cursor = temp_conn.cursor()
-                    
-                    # Pattern 1: sso_settings table (QuizMind, PodLearn, Vocaburn)
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sso_settings'")
-                    if cursor.fetchone():
-                        cursor.execute("SELECT client_id FROM sso_settings LIMIT 1")
-                        row = cursor.fetchone()
-                        if row and row[0] == client_id:
-                            db_path = temp_path
-                            temp_conn.close()
-                            break
-                            
-                    # Pattern 2: system_settings table key-value (RemiNote)
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-                    if cursor.fetchone():
-                        cursor.execute("SELECT value FROM system_settings WHERE key = 'CENTRAL_AUTH_CLIENT_ID'")
-                        row = cursor.fetchone()
-                        if row and row[0] == client_id:
-                            db_path = temp_path
-                            temp_conn.close()
-                            break
-                            
-                    temp_conn.close()
-                except Exception:
-                    pass
-                    
-    if not db_path:
+    # 1. Parse base URL
+    base_url = client.app_url
+    if not base_url and client.redirect_uri:
+        parsed = urllib.parse.urlparse(client.redirect_uri.split(',')[0])
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+    if base_url:
+        # 2. HTTP Handshake for Dynamic DB Discovery
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as http_client:
+                resp = await http_client.post(
+                    f"{base_url.rstrip('/')}/api/admin/sso/handshake", 
+                    json={"client_id": client.client_id, "client_secret": client.client_secret}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    db_path = data.get("db_path")
+        except Exception as e:
+            print(f"[!] HTTP Handshake failed for {client.name}: {e}")
+            
+    if not db_path or not os.path.exists(db_path):
         return None, None
         
     try:
@@ -149,7 +137,7 @@ async def sync_scan(db: AsyncSession = Depends(get_db)):
     
     for client in clients:
         client_id = client.client_id
-        conn, sso_col = get_satellite_db_connection(client_id)
+        conn, sso_col = await get_satellite_db_connection(client)
         if not conn:
             continue
             
@@ -269,7 +257,13 @@ async def sync_execute(request: Request, db: AsyncSession = Depends(get_db)):
     if (username and username.lower() == "admin") or (email and email.lower() == "admin@mindstack.click"):
         raise HTTPException(status_code=400, detail="Action prohibited: Emergency fallback account is excluded from SSO modifications.")
         
-    conn, sso_col = get_satellite_db_connection(client_id)
+    from sqlalchemy import select
+    res = await db.execute(select(Client).where(Client.client_id == client_id))
+    client_obj = res.scalar_one_or_none()
+    if not client_obj:
+        raise HTTPException(status_code=400, detail="Client not found")
+        
+    conn, sso_col = await get_satellite_db_connection(client_obj)
     if not conn:
         raise HTTPException(status_code=400, detail=f"Database for client {client_id} not found")
         
@@ -530,40 +524,22 @@ class PingRequest(BaseModel):
     expected_secret: str = None
 
 @router.post("/ping-client")
-async def ping_client(req: PingRequest):
+async def ping_client(req: PingRequest, db: AsyncSession = Depends(get_db)):
     try:
-        # Step 1: Verify secret via DB scan if provided
+        # Step 1: Verify via Dynamic HTTP Handshake
         if req.client_id and req.expected_secret:
-            conn, sso_col = get_satellite_db_connection(req.client_id)
+            from sqlalchemy import select
+            res = await db.execute(select(Client).where(Client.client_id == req.client_id))
+            client_obj = res.scalar_one_or_none()
+            
+            if not client_obj:
+                return {"success": False, "message": "Client not found in Hub"}
+                
+            conn, sso_col = await get_satellite_db_connection(client_obj)
             if not conn:
-                return {"success": False, "message": "Satellite DB not found in Storage"}
-                
-            try:
-                cursor = conn.cursor()
-                actual_secret = None
-                
-                # Check Pattern 1: sso_settings
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sso_settings'")
-                if cursor.fetchone():
-                    cursor.execute("SELECT client_secret FROM sso_settings LIMIT 1")
-                    row = cursor.fetchone()
-                    if row: actual_secret = row[0]
-                
-                # Check Pattern 2: system_settings
-                if not actual_secret:
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-                    if cursor.fetchone():
-                        cursor.execute("SELECT value FROM system_settings WHERE key = 'CENTRAL_AUTH_CLIENT_SECRET'")
-                        row = cursor.fetchone()
-                        if row: actual_secret = row[0]
-                
+                return {"success": False, "message": "Handshake failed or Satellite DB not found"}
+            else:
                 conn.close()
-                
-                if actual_secret != req.expected_secret:
-                    return {"success": False, "message": "Secret Mismatch"}
-            except Exception as e:
-                if conn: conn.close()
-                return {"success": False, "message": f"DB verification error: {e}"}
 
         # Step 2: HTTP Ping
         parsed = urllib.parse.urlparse(req.base_url)

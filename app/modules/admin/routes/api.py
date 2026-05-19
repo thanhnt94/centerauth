@@ -409,8 +409,7 @@ async def propagate_user_update_to_satellites(user, clients):
         return
         
     for client in clients:
-        client_id = client.client_id
-        conn, sso_col = get_satellite_db_connection(client_id)
+        conn, sso_col = await get_satellite_db_connection(client)
         if not conn:
             continue
         try:
@@ -596,7 +595,7 @@ async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=404, detail="Client not found")
         
     # 2. Get DB connection
-    conn, sso_col = get_satellite_db_connection(client.client_id)
+    conn, sso_col = await get_satellite_db_connection(client)
     if not conn:
         raise HTTPException(status_code=400, detail="Could not connect to satellite DB. Please check Pairing status.")
         

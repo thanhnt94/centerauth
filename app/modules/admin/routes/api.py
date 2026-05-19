@@ -612,6 +612,106 @@ async def delete_client(client_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/clients/{client_id}/push")
 async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db)):
-    # This endpoint can be expanded later to perform HTTP POST to the client's internal webhook to update its sso_settings database.
-    # For now, return success to clear the UI error.
-    return {"success": True, "message": "Pushed configuration successfully"}
+    from sqlalchemy import select
+    # 1. Get Client
+    result = await db.execute(select(Client).filter(Client.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    # 2. Get DB connection
+    conn, sso_col = get_satellite_db_connection(client.client_id)
+    if not conn:
+        raise HTTPException(status_code=400, detail="Could not connect to satellite DB. Please check Pairing status.")
+        
+    try:
+        cursor = conn.cursor()
+        
+        # 3. Discover User table
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = [t[0].lower() for t in cursor.fetchall()]
+        user_table = "users" if "users" in tables else "user" if "user" in tables else None
+        if not user_table:
+            raise HTTPException(status_code=400, detail="User table not found in satellite")
+            
+        cursor.execute(f"PRAGMA table_info({user_table});")
+        cols_info = cursor.fetchall()
+        cols = [c[1].lower() for c in cols_info]
+        id_col = "user_id" if "user_id" in cols else "id"
+        pwd_col = "hashed_password" if "hashed_password" in cols else "password_hash" if "password_hash" in cols else None
+        
+        # Ensure email and sso_col exist
+        if "email" not in cols or not sso_col:
+            raise HTTPException(status_code=400, detail="Satellite schema incompatible (missing email or sso column).")
+            
+        # 4. Fetch all Central Auth users
+        ca_users = await UserService.list_users(db)
+        
+        pushed_count = 0
+        updated_count = 0
+        
+        for ca_user in ca_users:
+            if not ca_user.email:
+                continue
+            
+            # Rule 2: Emergency Fallback Protection
+            if ca_user.username == "admin" or ca_user.email.lower() == "admin@mindstack.click":
+                continue
+                
+            # Check if user exists in satellite by email
+            cursor.execute(f"SELECT {id_col} FROM {user_table} WHERE LOWER(email) = ?;", (ca_user.email.lower(),))
+            sat_user = cursor.fetchone()
+            
+            if sat_user:
+                # Update existing satellite user
+                sat_user_id = sat_user[0]
+                # Fallback protection for satellite ID 1 just in case
+                if str(sat_user_id) == "1":
+                    continue
+                    
+                update_fields = [f"{sso_col} = ?"]
+                params = [str(ca_user.id)]
+                if "username" in cols:
+                    update_fields.append("username = ?")
+                    params.append(ca_user.username)
+                if pwd_col and ca_user.password_hash:
+                    update_fields.append(f"{pwd_col} = ?")
+                    params.append(ca_user.password_hash)
+                    
+                params.append(ca_user.email.lower())
+                
+                query = f"UPDATE {user_table} SET {', '.join(update_fields)} WHERE LOWER(email) = ?;"
+                cursor.execute(query, tuple(params))
+                updated_count += 1
+            else:
+                # Insert new satellite user
+                insert_cols = ["email", sso_col]
+                insert_vals = [ca_user.email, str(ca_user.id)]
+                
+                if "username" in cols:
+                    insert_cols.append("username")
+                    insert_vals.append(ca_user.username)
+                    
+                if pwd_col and ca_user.password_hash:
+                    insert_cols.append(pwd_col)
+                    insert_vals.append(ca_user.password_hash)
+                    
+                if "is_admin" in cols:
+                    insert_cols.append("is_admin")
+                    insert_vals.append(1 if ca_user.is_admin else 0)
+                    
+                if "is_active" in cols:
+                    insert_cols.append("is_active")
+                    insert_vals.append(1 if getattr(ca_user, "is_active", True) else 0)
+                    
+                placeholders = ", ".join(["?" for _ in insert_cols])
+                query = f"INSERT INTO {user_table} ({', '.join(insert_cols)}) VALUES ({placeholders});"
+                cursor.execute(query, tuple(insert_vals))
+                pushed_count += 1
+                
+        conn.commit()
+        return {"success": True, "message": f"Push complete! Created {pushed_count} new users, Updated {updated_count} existing users."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Push failed: {str(e)}")
+    finally:
+        conn.close()

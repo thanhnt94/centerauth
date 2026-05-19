@@ -284,7 +284,7 @@ sso = EcosystemAuth(CENTRAL_AUTH_SERVER, CLIENT_ID, CLIENT_SECRET)
                       </button>
                       <button 
                         onClick={async () => {
-                          if (!window.confirm(`Đồng bộ cấu hình từ Hub xuống ${client.name}?`)) return;
+                          if (!window.confirm(`Đồng bộ toàn bộ người dùng từ Hub xuống ${client.name}?`)) return;
                           try {
                             const res = await fetch(`/admin/api/clients/${client.id}/push`, { method: 'POST' });
                             const data = await res.json();
@@ -294,7 +294,7 @@ sso = EcosystemAuth(CENTRAL_AUTH_SERVER, CLIENT_ID, CLIENT_SECRET)
                           }
                         }}
                         className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-indigo-400 transition-all shadow-lg"
-                        title="Sync Hub -> Client"
+                        title="Push Users to Client"
                       >
                         <ShieldCheck size={16} />
                       </button>

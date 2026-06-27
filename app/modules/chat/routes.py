@@ -848,20 +848,29 @@ async def get_failover_pool(
     admin_user = current_user
     available_keys = []
     if admin_user:
-        available_keys.extend([
-            {"key_id": "system-google", "label": "System Google (Gemini)", "provider": "google", "default_model": admin_user.google_model or "gemini-2.0-flash"},
-            {"key_id": "system-groq", "label": "System Groq", "provider": "groq", "default_model": admin_user.groq_model or "llama-3.3-70b-versatile"},
-            {"key_id": "system-openai", "label": "System OpenAI", "provider": "openai", "default_model": admin_user.openai_model or "gpt-4o"},
-            {"key_id": "system-cerebras", "label": "System Cerebras", "provider": "cerebras", "default_model": admin_user.cerebras_model or "llama3.1-8b"},
-            {"key_id": "system-nvidia", "label": "System NVIDIA", "provider": "nvidia", "default_model": admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"},
-            {"key_id": "system-sambanova", "label": "System SambaNova", "provider": "sambanova", "default_model": admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"},
-            {"key_id": "system-mistral", "label": "System Mistral", "provider": "mistral", "default_model": admin_user.mistral_model or "mistral-large-latest"},
-            {"key_id": "system-cloudflare", "label": "System Cloudflare", "provider": "cloudflare", "default_model": admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"},
-            {"key_id": "system-github_models", "label": "System GitHub Models", "provider": "github_models", "default_model": admin_user.github_models_model or "gpt-4o"},
-            {"key_id": "system-cohere", "label": "System Cohere", "provider": "cohere", "default_model": admin_user.cohere_model or "command-r-plus"},
-            {"key_id": "system-huggingface", "label": "System HuggingFace", "provider": "huggingface", "default_model": admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"},
-            {"key_id": "system-fireworks", "label": "System Fireworks AI", "provider": "fireworks", "default_model": admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct"}
-        ])
+        system_providers = [
+            ("google", "System Google (Gemini)", admin_user.google_api_key or settings.GEMINI_API_KEY, admin_user.google_model or "gemini-2.0-flash"),
+            ("groq", "System Groq", admin_user.groq_api_key or settings.GROQ_API_KEY, admin_user.groq_model or "llama-3.3-70b-versatile"),
+            ("openai", "System OpenAI", admin_user.openai_api_key or settings.OPENAI_API_KEY, admin_user.openai_model or "gpt-4o"),
+            ("cerebras", "System Cerebras", admin_user.cerebras_api_key or settings.CEREBRAS_API_KEY, admin_user.cerebras_model or "llama3.1-8b"),
+            ("nvidia", "System NVIDIA", admin_user.nvidia_api_key or settings.NVIDIA_API_KEY, admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"),
+            ("sambanova", "System SambaNova", admin_user.sambanova_api_key or settings.SAMBANOVA_API_KEY, admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"),
+            ("mistral", "System Mistral", admin_user.mistral_api_key or settings.MISTRAL_API_KEY, admin_user.mistral_model or "mistral-large-latest"),
+            ("cloudflare", "System Cloudflare", admin_user.cloudflare_api_key or settings.CLOUDFLARE_API_KEY, admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
+            ("github_models", "System GitHub Models", admin_user.github_models_api_key or settings.GITHUB_MODELS_API_KEY, admin_user.github_models_model or "gpt-4o"),
+            ("cohere", "System Cohere", admin_user.cohere_api_key or settings.COHERE_API_KEY, admin_user.cohere_model or "command-r-plus"),
+            ("huggingface", "System HuggingFace", admin_user.huggingface_api_key or settings.HUGGINGFACE_API_KEY, admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"),
+            ("fireworks", "System Fireworks AI", admin_user.fireworks_api_key or settings.FIREWORKS_API_KEY, admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct")
+        ]
+        
+        for provider, label, api_key_val, default_model in system_providers:
+            if api_key_val and api_key_val.strip() and api_key_val != "********":
+                available_keys.append({
+                    "key_id": f"system-{provider}",
+                    "label": label,
+                    "provider": provider,
+                    "default_model": default_model
+                })
 
         try:
             import json

@@ -23,7 +23,9 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     site: true,
     user: true,
-    aichat: true
+    aichat: true,
+    tts: true,
+    queue: true
   });
 
   useEffect(() => {
@@ -93,7 +95,23 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       items: [
         { icon: <Bot size={20} />, label: 'AI Chat', path: '/admin/aichat', color: 'text-indigo-400' },
         { icon: <Key size={20} />, label: 'AI Settings', path: '/admin/ai-settings', color: 'text-indigo-300' },
+      ]
+    });
+
+    // Add TTS section
+    sections.push({
+      key: 'tts',
+      title: 'TTS Space',
+      items: [
         { icon: <Volume2 size={20} />, label: 'TTS Hub', path: '/admin/tts', color: 'text-indigo-400' },
+      ]
+    });
+
+    // Add Queue section
+    sections.push({
+      key: 'queue',
+      title: 'Queue Manager',
+      items: [
         { icon: <Activity size={20} />, label: 'Queue', path: '/admin/queue', color: 'text-emerald-400' },
       ]
     });

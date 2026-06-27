@@ -104,6 +104,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       title: 'TTS Space',
       items: [
         { icon: <Volume2 size={20} />, label: 'TTS Hub', path: '/admin/tts', color: 'text-indigo-400' },
+        { icon: <Key size={20} />, label: 'TTS Settings', path: '/admin/tts-settings', color: 'text-indigo-300' },
       ]
     });
 

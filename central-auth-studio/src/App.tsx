@@ -28,7 +28,8 @@ const App: React.FC = () => {
               <Route path="/admin/aichat" element={<AIChatConsole defaultTab="chat" />} />
               <Route path="/admin/ai-settings" element={<AIChatConsole defaultTab="keys" />} />
               <Route path="/admin/queue" element={<QueueDashboard />} />
-              <Route path="/admin/tts" element={<TTSConsole />} />
+              <Route path="/admin/tts" element={<TTSConsole defaultTab="playground" />} />
+              <Route path="/admin/tts-settings" element={<TTSConsole defaultTab="settings" />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

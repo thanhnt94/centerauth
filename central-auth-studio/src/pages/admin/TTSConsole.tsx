@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Volume2, Play, Pause, Download, Trash2, Settings as SettingsIcon, 
-  Activity, Loader2, PlaySquare, FileAudio, RefreshCw, Check
+  Volume2, Play, Pause, Download, Trash2, 
+  Activity, Loader2, FileAudio, RefreshCw, Check
 } from 'lucide-react';
 
 interface TTSFile {
@@ -31,8 +31,16 @@ const EDGE_VOICES_MAP = {
   'it': { name: 'Elsa (Italian)', code: 'it-IT-ElsaNeural' }
 };
 
-export const TTSConsole: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'playground' | 'settings'>('playground');
+interface TTSConsoleProps {
+  defaultTab?: 'playground' | 'settings';
+}
+
+export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'playground' }) => {
+  const [activeTab, setActiveTab] = useState<'playground' | 'settings'>(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
   
   // Synthesizer State
   const [inputText, setInputText] = useState('');
@@ -199,31 +207,13 @@ export const TTSConsole: React.FC = () => {
         <div>
           <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
             <Volume2 className="text-indigo-500" size={32} />
-            Centralized TTS Hub
+            {activeTab === 'playground' ? 'TTS Speech Synthesizer' : 'TTS Configuration'}
           </h2>
           <p className="text-slate-400 mt-2">
-            Configure premium Text-to-Speech voices and test speech synthesis output.
+            {activeTab === 'playground' 
+              ? 'Test premium Text-to-Speech voices and preview output clips.' 
+              : 'Configure default voices per language and worker batch details.'}
           </p>
-        </div>
-
-        {/* Tab Controls */}
-        <div className="flex bg-slate-900 border border-white/5 p-1.5 rounded-2xl shrink-0">
-          <button 
-            onClick={() => setActiveTab('playground')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300
-              ${activeTab === 'playground' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-white'}`}
-          >
-            <PlaySquare size={16} />
-            TTS Playground
-          </button>
-          <button 
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300
-              ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-white'}`}
-          >
-            <SettingsIcon size={16} />
-            Config & Queue Settings
-          </button>
         </div>
       </div>
 

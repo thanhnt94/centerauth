@@ -26,3 +26,19 @@ class AuditLog(Base):
     details = Column(Text, nullable=True)  # JSON or descriptive text
     username = Column(String(100), nullable=True, index=True)  # Who initiated
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AIFailoverModel(Base):
+    """
+    Priority ordered AI provider + key + model combinations for automatic failover pooling.
+    """
+    __tablename__ = "ai_failover_models"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(50), nullable=False)           # e.g., "google", "groq", "openai"
+    key_id = Column(String(255), nullable=False)            # e.g., "system-google" or "custom-12345"
+    key_label = Column(String(255), nullable=False)         # e.g., "My Custom Key", "System Fallback"
+    model_id = Column(String(255), nullable=False)          # e.g., "gemini-2.0-flash", "llama-3.3-70b"
+    priority = Column(Integer, default=0, index=True)       # Lower priority value is tried first
+    is_enabled = Column(Boolean, default=True, index=True)
+

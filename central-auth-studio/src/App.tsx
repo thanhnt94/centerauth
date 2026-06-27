@@ -10,6 +10,7 @@ import { LandingPage } from './pages/LandingPage';
 import { AIChatConsole } from './pages/admin/AIChatConsole';
 import { QueueDashboard } from './pages/admin/QueueDashboard';
 import { TTSConsole } from './pages/admin/TTSConsole';
+import { AIFailoverManager } from './pages/admin/AIFailoverManager';
 
 import { Logs } from './pages/admin/Logs';
 import { Settings as AdminSettings } from './pages/admin/Settings';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
               <Route path="/portal" element={<Portal />} />
               <Route path="/admin/aichat" element={<AIChatConsole defaultTab="chat" />} />
               <Route path="/admin/ai-settings" element={<AIChatConsole defaultTab="keys" />} />
+              <Route path="/admin/ai-failover" element={<AIFailoverManager />} />
               <Route path="/admin/queue" element={<QueueDashboard />} />
               <Route path="/admin/tts" element={<TTSConsole defaultTab="playground" />} />
               <Route path="/admin/tts-settings" element={<TTSConsole defaultTab="settings" />} />

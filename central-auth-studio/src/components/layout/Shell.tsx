@@ -3,7 +3,7 @@ import {
   Shield, LayoutGrid, Users, Settings, 
   History, LogOut, Menu, Bell,
   Database, RefreshCw, Bot, Activity,
-  ChevronDown, ChevronRight, Key, Volume2
+  ChevronDown, ChevronRight, Key, Volume2, Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
@@ -95,6 +95,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       items: [
         { icon: <Bot size={20} />, label: 'AI Chat', path: '/admin/aichat', color: 'text-indigo-400' },
         { icon: <Key size={20} />, label: 'AI Settings', path: '/admin/ai-settings', color: 'text-indigo-300' },
+        { icon: <Sliders size={20} />, label: 'AI Failover Pool', path: '/admin/ai-failover', color: 'text-indigo-400' },
       ]
     });
 

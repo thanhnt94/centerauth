@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from app.core.db import engine, Base, get_db
 from app.core.db_aichat import engine as aichat_engine, Base as AIChatBase
 from app.modules.queue.worker import start_queue_worker
-from app.modules.admin.models import SystemSetting, AuditLog
+from app.modules.admin.models import SystemSetting, AuditLog, AIFailoverModel
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

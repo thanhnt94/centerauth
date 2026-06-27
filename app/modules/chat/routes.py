@@ -13,6 +13,7 @@ from app.modules.chat.utils import get_current_user
 from app.modules.identity.models import User
 from app.modules.chat.models import ChatSession, Message
 from app.modules.chat.providers import get_provider
+from app.modules.admin.models import AIFailoverModel
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -565,4 +566,339 @@ async def list_models_by_key(
     except Exception as e:
         logger.error(f"Failed to list models for key_id '{key_id}': {e}")
         return []
+
+class DirectGenerateRequest(BaseModel):
+    prompt: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+@router.post("/generate-direct")
+async def generate_direct(
+    body: DirectGenerateRequest,
+    db: AsyncSession = Depends(get_auth_db)
+):
+    """Directly generate text using active administrator configurations, with automatic failover."""
+    result = await db.execute(
+        select(User).where(User.is_admin == True).order_by(User.id.asc())
+    )
+    admin_user = result.scalars().first()
+    if not admin_user:
+        raise HTTPException(status_code=400, detail="Administrator user not configured in CentralAuth.")
+
+    # 1. Try AIFailoverModel database configs first (if any are enabled)
+    pool_result = await db.execute(
+        select(AIFailoverModel)
+        .where(AIFailoverModel.is_enabled == True)
+        .order_by(AIFailoverModel.priority.asc())
+    )
+    failover_models = pool_result.scalars().all()
+    
+    tried_candidates = []
+    
+    for candidate in failover_models:
+        provider = candidate.provider
+        key_id = candidate.key_id
+        model = candidate.model_id
+        
+        # Resolve api_key
+        api_key = None
+        if key_id == "system-google":
+            api_key = settings.GEMINI_API_KEY
+        elif key_id == "system-groq":
+            api_key = settings.GROQ_API_KEY
+        elif key_id == "system-cerebras":
+            api_key = settings.CEREBRAS_API_KEY
+        elif key_id == "system-openai":
+            api_key = settings.OPENAI_API_KEY
+        elif key_id == "system-nvidia":
+            api_key = settings.NVIDIA_API_KEY
+        elif key_id == "system-sambanova":
+            api_key = settings.SAMBANOVA_API_KEY
+        elif key_id == "system-mistral":
+            api_key = settings.MISTRAL_API_KEY
+        elif key_id == "system-cloudflare":
+            api_key = settings.CLOUDFLARE_API_KEY
+        elif key_id == "system-github_models":
+            api_key = settings.GITHUB_MODELS_API_KEY
+        elif key_id == "system-cohere":
+            api_key = settings.COHERE_API_KEY
+        elif key_id == "system-huggingface":
+            api_key = settings.HUGGINGFACE_API_KEY
+        elif key_id == "system-fireworks":
+            api_key = settings.FIREWORKS_API_KEY
+        else:
+            # Custom key
+            try:
+                import json
+                keys = json.loads(admin_user.api_keys_json or "[]")
+                matched = next((k for k in keys if k.get("id") == key_id), None)
+                if matched:
+                    api_key = matched.get("api_key")
+            except Exception:
+                pass
+                
+        if not api_key:
+            # Fallback to provider fallback key
+            fallback_keys = {
+                "google": settings.GEMINI_API_KEY,
+                "openai": settings.OPENAI_API_KEY,
+                "groq": settings.GROQ_API_KEY,
+                "cerebras": settings.CEREBRAS_API_KEY,
+                "nvidia": settings.NVIDIA_API_KEY,
+                "sambanova": settings.SAMBANOVA_API_KEY,
+                "mistral": settings.MISTRAL_API_KEY,
+                "cloudflare": settings.CLOUDFLARE_API_KEY,
+                "github_models": settings.GITHUB_MODELS_API_KEY,
+                "cohere": settings.COHERE_API_KEY,
+                "huggingface": settings.HUGGINGFACE_API_KEY,
+                "fireworks": settings.FIREWORKS_API_KEY
+            }
+            api_key = fallback_keys.get(provider)
+            
+        if not api_key:
+            logger.warning(f"[FAILOVER] Key not configured for pool candidate: {candidate.key_label} ({provider})")
+            continue
+            
+        tried_candidates.append(f"{candidate.key_label} [{model}]")
+        
+        try:
+            logger.info(f"[FAILOVER] Attempting generation using candidate: {candidate.key_label} (model: {model})")
+            service = get_provider(provider, api_key=api_key, model_id=model)
+            response_chunks = []
+            async for chunk in service.generate_text_stream(body.prompt, []):
+                response_chunks.append(chunk)
+            text = "".join(response_chunks).strip()
+            
+            # Check if it contains API error message
+            if "[Google Studio API Error]" in text or "[Groq API Error]" in text or "API Error" in text or "quota" in text.lower():
+                raise Exception(f"Provider returned error: {text[:150]}")
+                
+            return {"text": text, "provider": provider, "model": model, "key_label": candidate.key_label}
+        except Exception as e:
+            logger.error(f"[FAILOVER WARNING] Candidate {candidate.key_label} ({model}) failed: {e}")
+            
+    # 2. Final Fallback if pool is empty or all pool candidates failed
+    logger.info("[FAILOVER] Falling back to default admin configuration...")
+    active_key_id = admin_user.active_key_id
+    active_provider = admin_user.active_provider or "google"
+    api_key = None
+    model_name = ""
+    
+    if active_key_id == "system-google":
+        active_provider = "google"
+        api_key = settings.GEMINI_API_KEY
+        model_name = admin_user.google_model or "gemini-2.0-flash"
+    elif active_key_id == "system-groq":
+        active_provider = "groq"
+        api_key = settings.GROQ_API_KEY
+        model_name = admin_user.groq_model or "llama-3.3-70b-versatile"
+    elif active_key_id == "system-cerebras":
+        active_provider = "cerebras"
+        api_key = settings.CEREBRAS_API_KEY
+        model_name = admin_user.cerebras_model or "llama3.1-8b"
+    elif active_key_id == "system-openai":
+        active_provider = "openai"
+        api_key = settings.OPENAI_API_KEY
+        model_name = admin_user.openai_model or "gpt-4o"
+    elif active_key_id == "system-nvidia":
+        active_provider = "nvidia"
+        api_key = settings.NVIDIA_API_KEY
+        model_name = admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"
+    elif active_key_id == "system-sambanova":
+        active_provider = "sambanova"
+        api_key = settings.SAMBANOVA_API_KEY
+        model_name = admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"
+    elif active_key_id == "system-mistral":
+        active_provider = "mistral"
+        api_key = settings.MISTRAL_API_KEY
+        model_name = admin_user.mistral_model or "mistral-large-latest"
+    elif active_key_id == "system-cloudflare":
+        active_provider = "cloudflare"
+        api_key = settings.CLOUDFLARE_API_KEY
+        model_name = admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    elif active_key_id == "system-github_models":
+        active_provider = "github_models"
+        api_key = settings.GITHUB_MODELS_API_KEY
+        model_name = admin_user.github_models_model or "gpt-4o"
+    elif active_key_id == "system-cohere":
+        active_provider = "cohere"
+        api_key = settings.COHERE_API_KEY
+        model_name = admin_user.cohere_model or "command-r-plus"
+    elif active_key_id == "system-huggingface":
+        active_provider = "huggingface"
+        api_key = settings.HUGGINGFACE_API_KEY
+        model_name = admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"
+    elif active_key_id == "system-fireworks":
+        active_provider = "fireworks"
+        api_key = settings.FIREWORKS_API_KEY
+        model_name = admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct"
+    elif active_key_id:
+        try:
+            import json
+            keys = json.loads(admin_user.api_keys_json or "[]")
+            matched = next((k for k in keys if k.get("id") == active_key_id), None)
+            if matched:
+                active_provider = matched.get("provider", "google")
+                api_key = matched.get("api_key")
+                model_name = matched.get("model")
+                if not model_name:
+                    if active_provider == "google":
+                        model_name = admin_user.google_model or "gemini-2.0-flash"
+                    elif active_provider == "groq":
+                        model_name = admin_user.groq_model or "llama-3.3-70b-versatile"
+                    elif active_provider == "cerebras":
+                        model_name = admin_user.cerebras_model or "llama3.1-8b"
+                    elif active_provider == "openai":
+                        model_name = admin_user.openai_model or "gpt-4o"
+                    elif active_provider == "nvidia":
+                        model_name = admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"
+                    elif active_provider == "sambanova":
+                        model_name = admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"
+                    elif active_provider == "mistral":
+                        model_name = admin_user.mistral_model or "mistral-large-latest"
+                    elif active_provider == "cloudflare":
+                        model_name = admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+                    elif active_provider == "github_models":
+                        model_name = admin_user.github_models_model or "gpt-4o"
+                    elif active_provider == "cohere":
+                        model_name = admin_user.cohere_model or "command-r-plus"
+                    elif active_provider == "huggingface":
+                        model_name = admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"
+                    elif active_provider == "fireworks":
+                        model_name = admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct"
+        except Exception:
+            pass
+            
+    if not api_key:
+        active_provider = "google"
+        api_key = settings.GEMINI_API_KEY
+        model_name = admin_user.google_model or "gemini-2.0-flash"
+
+    provider = body.provider or active_provider
+    model = body.model or model_name
+    
+    if not api_key and provider != active_provider:
+        fallback_keys = {
+            "google": settings.GEMINI_API_KEY,
+            "openai": settings.OPENAI_API_KEY,
+            "groq": settings.GROQ_API_KEY,
+            "cerebras": settings.CEREBRAS_API_KEY,
+            "nvidia": settings.NVIDIA_API_KEY,
+            "sambanova": settings.SAMBANOVA_API_KEY,
+            "mistral": settings.MISTRAL_API_KEY,
+            "cloudflare": settings.CLOUDFLARE_API_KEY,
+            "github_models": settings.GITHUB_MODELS_API_KEY,
+            "cohere": settings.COHERE_API_KEY,
+            "huggingface": settings.HUGGINGFACE_API_KEY,
+            "fireworks": settings.FIREWORKS_API_KEY
+        }
+        api_key = fallback_keys.get(provider)
+        
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"API key not configured for provider '{provider}'. Tried pool candidates: {tried_candidates}")
+        
+    try:
+        service = get_provider(provider, api_key=api_key, model_id=model)
+        response_chunks = []
+        async for chunk in service.generate_text_stream(body.prompt, []):
+            response_chunks.append(chunk)
+        text = "".join(response_chunks).strip()
+        return {"text": text, "provider": provider, "model": model, "key_label": "System Fallback"}
+    except Exception as e:
+        logger.error(f"Final default generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"AI generation failed after trying pool: {tried_candidates}. Error: {str(e)}")
+
+class FailoverItem(BaseModel):
+    provider: str
+    key_id: str
+    key_label: str
+    model_id: str
+    priority: int
+    is_enabled: bool
+
+class FailoverPoolSaveRequest(BaseModel):
+    items: List[FailoverItem]
+
+@router.get("/failover")
+async def get_failover_pool(
+    db: AsyncSession = Depends(get_auth_db)
+):
+    """Retrieve the current AI Failover Pool config and all available keys."""
+    pool_result = await db.execute(
+        select(AIFailoverModel).order_by(AIFailoverModel.priority.asc())
+    )
+    pool = pool_result.scalars().all()
+    pool_list = [
+        {
+            "id": item.id,
+            "provider": item.provider,
+            "key_id": item.key_id,
+            "key_label": item.key_label,
+            "model_id": item.model_id,
+            "priority": item.priority,
+            "is_enabled": item.is_enabled
+        }
+        for item in pool
+    ]
+
+    admin_result = await db.execute(
+        select(User).where(User.is_admin == True).order_by(User.id.asc())
+    )
+    admin_user = admin_result.scalars().first()
+    
+    available_keys = []
+    if admin_user:
+        available_keys.extend([
+            {"key_id": "system-google", "label": "System Google (Gemini)", "provider": "google", "default_model": admin_user.google_model or "gemini-2.0-flash"},
+            {"key_id": "system-groq", "label": "System Groq", "provider": "groq", "default_model": admin_user.groq_model or "llama-3.3-70b-versatile"},
+            {"key_id": "system-openai", "label": "System OpenAI", "provider": "openai", "default_model": admin_user.openai_model or "gpt-4o"},
+            {"key_id": "system-cerebras", "label": "System Cerebras", "provider": "cerebras", "default_model": admin_user.cerebras_model or "llama3.1-8b"},
+            {"key_id": "system-nvidia", "label": "System NVIDIA", "provider": "nvidia", "default_model": admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"},
+            {"key_id": "system-sambanova", "label": "System SambaNova", "provider": "sambanova", "default_model": admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"},
+            {"key_id": "system-mistral", "label": "System Mistral", "provider": "mistral", "default_model": admin_user.mistral_model or "mistral-large-latest"},
+            {"key_id": "system-cloudflare", "label": "System Cloudflare", "provider": "cloudflare", "default_model": admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"},
+            {"key_id": "system-github_models", "label": "System GitHub Models", "provider": "github_models", "default_model": admin_user.github_models_model or "gpt-4o"},
+            {"key_id": "system-cohere", "label": "System Cohere", "provider": "cohere", "default_model": admin_user.cohere_model or "command-r-plus"},
+            {"key_id": "system-huggingface", "label": "System HuggingFace", "provider": "huggingface", "default_model": admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"},
+            {"key_id": "system-fireworks", "label": "System Fireworks AI", "provider": "fireworks", "default_model": admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct"}
+        ])
+
+        try:
+            import json
+            keys = json.loads(admin_user.api_keys_json or "[]")
+            for k in keys:
+                available_keys.append({
+                    "key_id": k.get("id"),
+                    "label": f"Custom Key: {k.get('label')}",
+                    "provider": k.get("provider"),
+                    "default_model": k.get("model", "")
+                })
+        except Exception:
+            pass
+
+    return {
+        "failover_pool": pool_list,
+        "available_keys": available_keys
+    }
+
+@router.post("/failover")
+async def save_failover_pool(
+    body: FailoverPoolSaveRequest,
+    db: AsyncSession = Depends(get_auth_db)
+):
+    """Save the updated AI Failover Pool config."""
+    await db.execute(delete(AIFailoverModel))
+    for idx, item in enumerate(body.items):
+        db.add(
+            AIFailoverModel(
+                provider=item.provider,
+                key_id=item.key_id,
+                key_label=item.key_label,
+                model_id=item.model_id,
+                priority=idx,
+                is_enabled=item.is_enabled
+            )
+        )
+    await db.commit()
+    return {"success": True, "message": "AI Failover Pool saved successfully!"}
 

@@ -186,19 +186,30 @@ async def cancel_task(
     db: AsyncSession = Depends(get_db),
     _auth: bool = Depends(verify_queue_token),
 ):
-    """Cancel a pending task (removes it from the queue)."""
+    """Delete a task from the queue."""
     result = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in ("pending", "failed"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel task with status '{task.status}'"
-        )
     await db.delete(task)
     await db.commit()
-    return {"message": f"Task {task_id} cancelled and removed"}
+    return {"message": f"Task {task_id} removed"}
+
+@router.delete("/clear")
+async def clear_queue(
+    status: Optional[str] = Query(None, description="Clear only tasks with this status"),
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token),
+):
+    """Clear tasks from the queue (all or filtered by status)."""
+    from sqlalchemy import delete
+    stmt = delete(QueuedTask)
+    if status:
+        stmt = stmt.where(QueuedTask.status == status)
+    
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"message": "Queue cleared successfully", "deleted_count": result.rowcount}
 
 
 @router.post("/retry/{task_id}", response_model=TaskResponse)

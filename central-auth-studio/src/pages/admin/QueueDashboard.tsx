@@ -163,7 +163,7 @@ export const QueueDashboard: React.FC = () => {
   }, [statusFilter, sourceFilter, offset, searchPrompt]);
 
   const handleCancelTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to cancel and remove this task from the queue?')) return;
+    if (!confirm('Are you sure you want to remove this task from the queue?')) return;
     setActionLoading(taskId);
     try {
       const res = await fetch(`/api/queue/task/${taskId}`, {
@@ -175,12 +175,43 @@ export const QueueDashboard: React.FC = () => {
         fetchTasks();
       } else {
         const err = await res.json();
-        alert(err.detail || 'Failed to cancel task');
+        alert(err.detail || 'Failed to delete task');
       }
     } catch (err) {
-      console.error('Cancel task failed:', err);
+      console.error('Delete task failed:', err);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleClearQueue = async () => {
+    let confirmMsg = 'Are you sure you want to clear the entire task queue?';
+    if (statusFilter) {
+      confirmMsg = `Are you sure you want to clear only the ${statusFilter} tasks?`;
+    }
+    if (!confirm(confirmMsg)) return;
+    
+    setLoading(true);
+    try {
+      let url = '/api/queue/clear';
+      if (statusFilter) {
+        url += `?status=${statusFilter}`;
+      }
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers
+      });
+      if (res.ok) {
+        fetchStats();
+        fetchTasks();
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Failed to clear queue');
+      }
+    } catch (err) {
+      console.error('Clear queue failed:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -369,12 +400,21 @@ export const QueueDashboard: React.FC = () => {
           </select>
         </div>
 
-        <button 
-          onClick={fetchTasks}
-          className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-xl text-slate-300 transition-all"
-        >
-          <RefreshCw size={14} /> Force Refresh
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleClearQueue}
+            className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-xl text-rose-400 transition-all active:scale-95"
+          >
+            <Trash2 size={14} /> Clear Queue
+          </button>
+
+          <button 
+            onClick={fetchTasks}
+            className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-xl text-slate-300 transition-all"
+          >
+            <RefreshCw size={14} /> Force Refresh
+          </button>
+        </div>
       </div>
 
       {/* Task List Table */}
@@ -480,16 +520,14 @@ export const QueueDashboard: React.FC = () => {
                           </button>
                         )}
                         
-                        {(task.status === 'pending' || task.status === 'failed') && (
-                          <button
-                            onClick={() => handleCancelTask(task.id)}
-                            disabled={actionLoading === task.id}
-                            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 p-2.5 rounded-xl transition-all"
-                            title="Cancel & Remove"
-                          >
-                            {actionLoading === task.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleCancelTask(task.id)}
+                          disabled={actionLoading === task.id}
+                          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 p-2.5 rounded-xl transition-all"
+                          title="Remove Task"
+                        >
+                          {actionLoading === task.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        </button>
                       </div>
                     </td>
                   </tr>

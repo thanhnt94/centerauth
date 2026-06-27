@@ -34,7 +34,6 @@ export const AIFailoverManager: React.FC = () => {
   const [customModelId, setCustomModelId] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<{id: string, display_name: string}[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
-  const [manualInput, setManualInput] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -44,6 +43,7 @@ export const AIFailoverManager: React.FC = () => {
     if (!keyId) return;
     setLoadingModels(true);
     setDiscoveredModels([]);
+    setCustomModelId('');
     setError(null);
     try {
       const res = await fetch('/api/chat/list-models', {
@@ -56,21 +56,13 @@ export const AIFailoverManager: React.FC = () => {
         setDiscoveredModels(data);
         if (data.length > 0) {
           setCustomModelId(data[0].id);
-          setManualInput(false);
-        } else {
-          setManualInput(true);
-          setError('No models returned from provider for this key. You can type the model ID manually below.');
         }
       } else {
-        const errText = await res.text();
-        setError(`Failed to load models: ${errText || res.statusText}`);
-        setDiscoveredModels([]);
-        setManualInput(true);
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.detail || 'Failed to fetch models from provider.');
       }
     } catch (err: any) {
       setError(`Network error loading models: ${err.message || err}`);
-      setDiscoveredModels([]);
-      setManualInput(true);
     } finally {
       setLoadingModels(false);
     }
@@ -372,48 +364,27 @@ export const AIFailoverManager: React.FC = () => {
                   </option>
                 ))}
               </select>
-            </div>
-
-            {/* Model ID Selection / Input */}
+            </div>            {/* Model ID Selection */}
             <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase block">Model ID</label>
-                {discoveredModels.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setManualInput(!manualInput)}
-                    className="text-[9px] text-indigo-400 hover:text-indigo-350 font-bold"
-                  >
-                    {manualInput ? 'Select from list' : 'Input manually'}
-                  </button>
-                )}
-              </div>
-              
-              {!manualInput && discoveredModels.length > 0 ? (
-                <select
-                  value={customModelId}
-                  onChange={(e) => setCustomModelId(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-3 text-xs text-white"
-                >
-                  {discoveredModels.map(m => (
+              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Model ID</label>
+              <select
+                value={customModelId}
+                onChange={(e) => setCustomModelId(e.target.value)}
+                disabled={discoveredModels.length === 0}
+                className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-3 text-xs text-white"
+              >
+                {discoveredModels.length === 0 ? (
+                  <option value="">Load models to choose variant</option>
+                ) : (
+                  discoveredModels.map(m => (
                     <option key={m.id} value={m.id}>
                       {m.display_name} ({m.id})
                     </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={customModelId}
-                  onChange={(e) => setCustomModelId(e.target.value)}
-                  placeholder={loadingModels ? "Loading models..." : "e.g. gemini-2.5-flash, llama-3.3-70b-versatile"}
-                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white font-mono"
-                  required
-                />
-              )}
-              
+                  ))
+                )}
+              </select>
               <span className="text-[9px] text-slate-600 mt-1 block">
-                Type or select the exact model ID from the provider specs.
+                Select a model version returned from the key account verify.
               </span>
             </div>
 

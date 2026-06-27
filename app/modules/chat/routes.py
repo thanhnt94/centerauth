@@ -557,7 +557,7 @@ async def list_models_by_key(
             pass
             
     if not api_key:
-        return []
+        raise HTTPException(status_code=400, detail="API key is not configured for this key account.")
         
     try:
         service = get_provider(provider, api_key=api_key)
@@ -565,7 +565,7 @@ async def list_models_by_key(
         return models
     except Exception as e:
         logger.error(f"Failed to list models for key_id '{key_id}': {e}")
-        return []
+        raise HTTPException(status_code=400, detail=str(e))
 
 class DirectGenerateRequest(BaseModel):
     prompt: str

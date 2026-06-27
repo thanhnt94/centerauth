@@ -32,10 +32,44 @@ export const AIFailoverManager: React.FC = () => {
   // Form state to add new candidate
   const [selectedKeyId, setSelectedKeyId] = useState('');
   const [customModelId, setCustomModelId] = useState('');
+  const [discoveredModels, setDiscoveredModels] = useState<{id: string, display_name: string}[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [manualInput, setManualInput] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleLoadModels = async (keyId: string) => {
+    if (!keyId) return;
+    setLoadingModels(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/chat/list-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key_id: keyId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDiscoveredModels(data);
+        if (data.length > 0) {
+          setCustomModelId(data[0].id);
+          setManualInput(false);
+        } else {
+          setManualInput(true);
+        }
+      } else {
+        setDiscoveredModels([]);
+        setManualInput(true);
+      }
+    } catch {
+      setDiscoveredModels([]);
+      setManualInput(true);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -47,8 +81,10 @@ export const AIFailoverManager: React.FC = () => {
         setFailoverPool(data.failover_pool);
         setAvailableKeys(data.available_keys);
         if (data.available_keys.length > 0) {
-          setSelectedKeyId(data.available_keys[0].key_id);
+          const firstKey = data.available_keys[0].key_id;
+          setSelectedKeyId(firstKey);
           setCustomModelId(data.available_keys[0].default_model);
+          handleLoadModels(firstKey);
         }
       } else {
         setError('Failed to fetch failover settings from server.');
@@ -66,6 +102,7 @@ export const AIFailoverManager: React.FC = () => {
     if (matched) {
       setCustomModelId(matched.default_model);
     }
+    handleLoadModels(keyId);
   };
 
   const handleAddCandidate = (e: React.FormEvent) => {
@@ -307,7 +344,18 @@ export const AIFailoverManager: React.FC = () => {
             
             {/* Choose Key */}
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Select Account Key</label>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block">Select Account Key</label>
+                <button
+                  type="button"
+                  onClick={() => handleLoadModels(selectedKeyId)}
+                  disabled={loadingModels || !selectedKeyId}
+                  className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1"
+                >
+                  <RefreshCw className={loadingModels ? 'animate-spin' : ''} size={10} />
+                  Load Models
+                </button>
+              </div>
               <select
                 value={selectedKeyId}
                 onChange={(e) => handleKeyChange(e.target.value)}
@@ -321,25 +369,52 @@ export const AIFailoverManager: React.FC = () => {
               </select>
             </div>
 
-            {/* Model ID Input */}
+            {/* Model ID Selection / Input */}
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Model ID</label>
-              <input
-                type="text"
-                value={customModelId}
-                onChange={(e) => setCustomModelId(e.target.value)}
-                placeholder="e.g. gemini-2.5-flash, llama-3.3-70b-versatile"
-                className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white font-mono"
-                required
-              />
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block">Model ID</label>
+                {discoveredModels.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setManualInput(!manualInput)}
+                    className="text-[9px] text-indigo-400 hover:text-indigo-350 font-bold"
+                  >
+                    {manualInput ? 'Select from list' : 'Input manually'}
+                  </button>
+                )}
+              </div>
+              
+              {!manualInput && discoveredModels.length > 0 ? (
+                <select
+                  value={customModelId}
+                  onChange={(e) => setCustomModelId(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-3 text-xs text-white"
+                >
+                  {discoveredModels.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name} ({m.id})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={customModelId}
+                  onChange={(e) => setCustomModelId(e.target.value)}
+                  placeholder={loadingModels ? "Loading models..." : "e.g. gemini-2.5-flash, llama-3.3-70b-versatile"}
+                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white font-mono"
+                  required
+                />
+              )}
+              
               <span className="text-[9px] text-slate-600 mt-1 block">
-                Type the exact model ID from the provider specs.
+                Type or select the exact model ID from the provider specs.
               </span>
             </div>
 
             <button
               type="submit"
-              disabled={!customModelId.trim()}
+              disabled={!customModelId.trim() || loadingModels}
               className="w-full bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-black uppercase tracking-wider py-3 px-4 rounded-xl text-indigo-400 transition-all flex items-center justify-center gap-1.5"
             >
               <Plus size={14} />

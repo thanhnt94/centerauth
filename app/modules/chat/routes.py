@@ -821,9 +821,13 @@ class FailoverPoolSaveRequest(BaseModel):
 
 @router.get("/failover")
 async def get_failover_pool(
-    db: AsyncSession = Depends(get_auth_db)
+    db: AsyncSession = Depends(get_auth_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Retrieve the current AI Failover Pool config and all available keys."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     pool_result = await db.execute(
         select(AIFailoverModel).order_by(AIFailoverModel.priority.asc())
     )
@@ -841,11 +845,7 @@ async def get_failover_pool(
         for item in pool
     ]
 
-    admin_result = await db.execute(
-        select(User).where(User.is_admin == True).order_by(User.id.asc())
-    )
-    admin_user = admin_result.scalars().first()
-    
+    admin_user = current_user
     available_keys = []
     if admin_user:
         available_keys.extend([
@@ -884,9 +884,13 @@ async def get_failover_pool(
 @router.post("/failover")
 async def save_failover_pool(
     body: FailoverPoolSaveRequest,
-    db: AsyncSession = Depends(get_auth_db)
+    db: AsyncSession = Depends(get_auth_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Save the updated AI Failover Pool config."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
     await db.execute(delete(AIFailoverModel))
     for idx, item in enumerate(body.items):
         db.add(

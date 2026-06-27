@@ -320,8 +320,5 @@ async def start_queue_worker():
         except Exception as loop_err:
             logger.error(f"[QueueWorker] Unexpected loop error: {loop_err}", exc_info=True)
 
-        # Rate-limit sleep (shorter for TTS tasks)
-        if is_tts:
-            await asyncio.sleep(0.2)
-        else:
-            await asyncio.sleep(delay)
+        # Rate-limit sleep using configured delay interval
+        await asyncio.sleep(delay)

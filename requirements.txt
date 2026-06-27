@@ -26,3 +26,7 @@ edge-tts
 gTTS
 pydub
 
+# AI Integration
+google-genai
+
+

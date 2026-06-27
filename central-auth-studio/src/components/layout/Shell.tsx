@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Shield, LayoutGrid, Users, Settings, 
   History, LogOut, Menu, Bell,
-  Database, RefreshCw
+  Database, RefreshCw, Bot, Activity,
+  ChevronDown, ChevronRight, Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
@@ -17,6 +18,13 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [user, setUser] = useState<{username: string, role: string, avatar_initial: string} | null>(null);
+  
+  // Accordion open/close states
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    site: true,
+    user: true,
+    aichat: true
+  });
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -47,20 +55,66 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const menuItems = [
-    { icon: <LayoutGrid size={20} />, label: 'Portal', path: '/portal', color: 'text-indigo-400' },
-    { icon: <Settings size={20} />, label: 'Account', path: '/settings', color: 'text-indigo-300' },
+  const sections = [
+    {
+      key: 'site',
+      title: 'Site Management',
+      items: [
+        { icon: <LayoutGrid size={20} />, label: 'Portal', path: '/portal', color: 'text-indigo-400' },
+      ]
+    },
+    {
+      key: 'user',
+      title: 'User Management',
+      items: [
+        { icon: <Settings size={20} />, label: 'Account', path: '/settings', color: 'text-indigo-300' },
+      ]
+    }
   ];
 
   if (user?.role === 'admin') {
-    menuItems.push(
+    // Add admin site tools
+    sections[0].items.push(
       { icon: <Database size={20} />, label: 'Clients', path: '/admin/clients', color: 'text-sky-400' },
-      { icon: <Users size={20} />, label: 'Identities', path: '/admin/users', color: 'text-emerald-400' },
       { icon: <RefreshCw size={20} />, label: 'Sync', path: '/admin/sync', color: 'text-amber-400' },
       { icon: <History size={20} />, label: 'Audit Logs', path: '/admin/logs', color: 'text-amber-400' },
       { icon: <Settings size={20} />, label: 'Settings', path: '/admin/settings', color: 'text-slate-400' }
     );
+
+    // Add admin user tools
+    sections[1].items.push(
+      { icon: <Users size={20} />, label: 'Identities', path: '/admin/users', color: 'text-emerald-400' }
+    );
+
+    // Add AI section
+    sections.push({
+      key: 'aichat',
+      title: 'AI Chat Space',
+      items: [
+        { icon: <Bot size={20} />, label: 'AI Chat', path: '/admin/aichat', color: 'text-indigo-400' },
+        { icon: <Key size={20} />, label: 'AI Settings', path: '/admin/ai-settings', color: 'text-indigo-300' },
+        { icon: <Activity size={20} />, label: 'Queue', path: '/admin/queue', color: 'text-emerald-400' },
+      ]
+    });
   }
+
+  // Auto-expand sections that have active items on location changes
+  useEffect(() => {
+    sections.forEach(s => {
+      if (s.items.some(i => location.pathname === i.path)) {
+        setExpandedSections(prev => ({ ...prev, [s.key]: true }));
+      }
+    });
+  }, [location.pathname, user]);
+
+  const toggleSection = (key: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const allItems = sections.flatMap(s => s.items);
 
   if (user && user.role !== 'admin') {
     return <UserLaunchpad user={user as any} />;
@@ -88,7 +142,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       >
         <div className="flex flex-col h-full p-8">
           {/* Logo */}
-          <div className="flex items-center gap-4 mb-20">
+          <div className="flex items-center gap-4 mb-12">
              <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.3)]">
                <Shield className="text-white" size={24} />
              </div>
@@ -105,25 +159,57 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-4">
-            {menuItems.map((item) => {
-              const isActive = location.pathname === item.path;
+          <nav className="flex-1 space-y-6 overflow-y-auto pr-1 custom-scrollbar">
+            {sections.map((section) => {
+              const isExpanded = expandedSections[section.key];
               return (
-                <Link 
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 group
-                    ${isActive ? 'bg-indigo-600 shadow-[0_0_30px_rgba(79,70,229,0.2)]' : 'hover:bg-white/5'}`}
-                >
-                  <div className={`${isActive ? 'text-white' : item.color} group-hover:scale-110 transition-transform`}>
-                    {item.icon}
-                  </div>
-                  {isSidebarOpen && (
-                    <span className={`text-sm font-bold uppercase tracking-wider ${isActive ? 'text-white' : 'text-slate-400'}`}>
-                      {item.label}
-                    </span>
+                <div key={section.key} className="space-y-2">
+                  {isSidebarOpen ? (
+                    <button
+                      onClick={() => toggleSection(section.key)}
+                      type="button"
+                      className="w-full flex items-center justify-between px-4 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors"
+                    >
+                      <span>{section.title}</span>
+                      {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    </button>
+                  ) : (
+                    <div className="border-t border-white/5 my-4" />
                   )}
-                </Link>
+                  
+                  <AnimatePresence initial={false}>
+                    {(!isSidebarOpen || isExpanded) && (
+                      <motion.div
+                        initial={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
+                        animate={isSidebarOpen ? { height: 'auto', opacity: 1 } : undefined}
+                        exit={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden space-y-1 pl-1"
+                      >
+                        {section.items.map((item) => {
+                          const isActive = location.pathname === item.path;
+                          return (
+                            <Link 
+                              key={item.path}
+                              to={item.path}
+                              className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group
+                                ${isActive ? 'bg-indigo-600 shadow-[0_0_30px_rgba(79,70,229,0.2)]' : 'hover:bg-white/5'}`}
+                            >
+                              <div className={`${isActive ? 'text-white' : item.color} group-hover:scale-110 transition-transform`}>
+                                {item.icon}
+                              </div>
+                              {isSidebarOpen && (
+                                <span className={`text-xs font-bold uppercase tracking-wider ${isActive ? 'text-white' : 'text-slate-400'}`}>
+                                  {item.label}
+                                </span>
+                              )}
+                            </Link>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               );
             })}
           </nav>
@@ -157,7 +243,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
             </button>
             <div className="h-8 w-[1px] bg-white/5" />
             <h1 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">
-               {menuItems.find(i => location.pathname === i.path)?.label || 'Mindstack Ecosystem'}
+               {allItems.find(i => location.pathname === i.path)?.label || 'Mindstack Ecosystem'}
             </h1>
           </div>
 

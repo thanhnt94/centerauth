@@ -7,6 +7,7 @@ from app.modules.identity.routes.api import me
 from app.modules.clients.models import Client
 from app.modules.identity.models import User
 from app.core.config import settings
+from app.modules.admin.models import SystemSetting, AuditLog
 import sqlite3
 import os
 
@@ -690,3 +691,61 @@ async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=500, detail=f"Push failed: {str(e)}")
     finally:
         conn.close()
+
+
+# -------------------------------------------------------------------
+# System Settings & Audit Logs Endpoints
+# -------------------------------------------------------------------
+
+@router.get("/settings")
+async def get_settings(db: AsyncSession = Depends(get_db)):
+    """Retrieve all global system settings."""
+    from sqlalchemy import select
+    result = await db.execute(select(SystemSetting))
+    settings_list = result.scalars().all()
+    return settings_list
+
+
+@router.post("/settings")
+async def save_settings(request: Request, db: AsyncSession = Depends(get_db)):
+    """Update global system settings (accepts key-value JSON)."""
+    data = await request.json()
+    from sqlalchemy import select
+    
+    for key, val in data.items():
+        # Query setting
+        result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+        setting = result.scalar_one_or_none()
+        if setting:
+            setting.value = str(val)
+        else:
+            # Create a fallback setting if it doesn't exist
+            setting = SystemSetting(
+                key=key,
+                value=str(val),
+                description=f"Auto-generated setting for {key}",
+                category="General"
+            )
+            db.add(setting)
+            
+    await db.commit()
+    return {"success": True, "message": "Configuration saved successfully"}
+
+
+@router.get("/logs")
+async def get_logs(db: AsyncSession = Depends(get_db)):
+    """Retrieve system security audit logs."""
+    from sqlalchemy import select
+    result = await db.execute(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(100))
+    logs_list = result.scalars().all()
+    return [
+        {
+            "id": log.id,
+            "action": log.action,
+            "details": log.details,
+            "username": log.username or "system",
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in logs_list
+    ]
+

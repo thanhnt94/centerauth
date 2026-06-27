@@ -20,3 +20,9 @@ alembic>=1.13.0
 pydantic[email]>=2.0.0
 pydantic-settings
 email-validator
+
+# Audio / TTS
+edge-tts
+gTTS
+pydub
+

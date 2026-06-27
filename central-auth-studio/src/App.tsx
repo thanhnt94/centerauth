@@ -7,6 +7,8 @@ import { Identities } from './pages/admin/Identities';
 import { SyncDashboard } from './pages/admin/SyncDashboard';
 import { Login } from './pages/auth/Login';
 import { LandingPage } from './pages/LandingPage';
+import { AIChatConsole } from './pages/admin/AIChatConsole';
+import { QueueDashboard } from './pages/admin/QueueDashboard';
 
 import { Logs } from './pages/admin/Logs';
 import { Settings as AdminSettings } from './pages/admin/Settings';
@@ -22,6 +24,9 @@ const App: React.FC = () => {
           <Shell>
             <Routes>
               <Route path="/portal" element={<Portal />} />
+              <Route path="/admin/aichat" element={<AIChatConsole defaultTab="chat" />} />
+              <Route path="/admin/ai-settings" element={<AIChatConsole defaultTab="keys" />} />
+              <Route path="/admin/queue" element={<QueueDashboard />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

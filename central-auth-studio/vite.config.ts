@@ -14,6 +14,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: 'es2015',
     outDir: '../app/static/dist',
     emptyOutDir: true,
     rollupOptions: {

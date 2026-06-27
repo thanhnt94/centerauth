@@ -5,18 +5,71 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 import os
+import asyncio
 from contextlib import asynccontextmanager
 
 from app.core.db import engine, Base, get_db
+from app.core.db_aichat import engine as aichat_engine, Base as AIChatBase
+from app.modules.queue.worker import start_queue_worker
+from app.modules.admin.models import SystemSetting, AuditLog
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup
+    # 1. Create tables on startup for CentralAuth DB
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # SQLite dynamic column migration check for AI columns in CentralAuth DB
+        from sqlalchemy import text
+        try:
+            res = await conn.execute(text("PRAGMA table_info(users)"))
+            columns = [row[1] for row in res.fetchall()]
+            ai_cols = [
+                ("active_provider", "VARCHAR(50) DEFAULT 'google'"),
+                ("google_api_key", "VARCHAR(500)"),
+                ("google_model", "VARCHAR(255) DEFAULT 'gemini-2.0-flash'"),
+                ("openai_api_key", "VARCHAR(500)"),
+                ("openai_model", "VARCHAR(255) DEFAULT 'gpt-4o'"),
+                ("anthropic_api_key", "VARCHAR(500)"),
+                ("anthropic_model", "VARCHAR(255) DEFAULT 'claude-3-5-sonnet'"),
+                ("groq_api_key", "VARCHAR(500)"),
+                ("groq_model", "VARCHAR(255) DEFAULT 'llama-3.3-70b-versatile'"),
+                ("cerebras_api_key", "VARCHAR(500)"),
+                ("cerebras_model", "VARCHAR(255) DEFAULT 'llama3.1-8b'"),
+                ("nvidia_api_key", "VARCHAR(500)"),
+                ("nvidia_model", "VARCHAR(255) DEFAULT 'meta/llama-3.3-70b-instruct'"),
+                ("sambanova_api_key", "VARCHAR(500)"),
+                ("sambanova_model", "VARCHAR(255) DEFAULT 'Meta-Llama-3.3-70B-Instruct'"),
+                ("mistral_api_key", "VARCHAR(500)"),
+                ("mistral_model", "VARCHAR(255) DEFAULT 'mistral-large-latest'"),
+                ("cloudflare_api_key", "VARCHAR(500)"),
+                ("cloudflare_model", "VARCHAR(255) DEFAULT '@cf/meta/llama-3.3-70b-instruct-fp8-fast'"),
+                ("github_models_api_key", "VARCHAR(500)"),
+                ("github_models_model", "VARCHAR(255) DEFAULT 'gpt-4o'"),
+                ("cohere_api_key", "VARCHAR(500)"),
+                ("cohere_model", "VARCHAR(255) DEFAULT 'command-r-plus'"),
+                ("huggingface_api_key", "VARCHAR(500)"),
+                ("huggingface_model", "VARCHAR(255) DEFAULT 'meta-llama/Llama-3.3-70B-Instruct'"),
+                ("fireworks_api_key", "VARCHAR(500)"),
+                ("fireworks_model", "VARCHAR(255) DEFAULT 'accounts/fireworks/models/llama-v3p3-70b-instruct'"),
+                ("api_keys_json", "VARCHAR(4000) DEFAULT '[]'"),
+                ("active_key_id", "VARCHAR(255)")
+            ]
+            for col_name, col_type in ai_cols:
+                if col_name not in columns:
+                    await conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                    print(f"[MIGRATION] Added {col_name} column to users table.")
+        except Exception as migration_error:
+            print(f"[MIGRATION ERROR] Failed to migrate users table: {migration_error}")
+            
+    # 2. Create tables for AIChat DB
+    async with aichat_engine.begin() as conn:
+        await conn.run_sync(AIChatBase.metadata.create_all)
+        print("[AICHAT] Database tables initialized.")
     
-    # Initialize admin user if not exists
+    # 3. Initialize admin user and default settings if not exist
     from app.core.db import SessionLocal
     from app.modules.identity.services.user_service import UserService
     async with SessionLocal() as db:
@@ -31,7 +84,33 @@ async def lifespan(app: FastAPI):
             ))
             print("Default admin created: admin / admin")
             
+        # Seed default settings if empty
+        from app.modules.admin.models import SystemSetting
+        from sqlalchemy import func
+        count_res = await db.execute(select(func.count(SystemSetting.key)))
+        count = count_res.scalar()
+        if count == 0:
+            defaults = [
+                SystemSetting(key="SSO_ENABLED", value="true", description="Enable SSO central jump protocol", category="Security"),
+                SystemSetting(key="REGISTRATION_ENABLED", value="true", description="Allow new user registrations", category="General"),
+                SystemSetting(key="MAX_ACTIVE_SESSIONS", value="5", description="Max login sessions allowed per user", category="General")
+            ]
+            db.add_all(defaults)
+            await db.commit()
+            print("[SEED] Default system settings created.")
+            
+    # 4. Start background queue worker
+    worker_task = asyncio.create_task(start_queue_worker())
+    print("[QUEUE] Background worker started.")
+            
     yield
+
+    # Cleanup: cancel worker on shutdown
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        print("[QUEUE] Background worker stopped.")
 
 app = FastAPI(
     title="CentralAuth Identity Hub",
@@ -66,11 +145,17 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 from app.modules.identity.routes import api as identity_api
 from app.modules.sso.routes import api as sso_api
 from app.modules.admin.routes import api as admin_api
+from app.modules.chat.routes import router as chat_router
+from app.modules.queue.routes import router as queue_router
+from app.modules.tts.routes import router as tts_router
 
 # Register Routers
 app.include_router(identity_api.router)
 app.include_router(sso_api.router)
 app.include_router(admin_api.router)
+app.include_router(chat_router)
+app.include_router(queue_router)
+app.include_router(tts_router)
 
 # --- SPA Routing (React app for auth, portal, admin) ---
 @app.get("/")

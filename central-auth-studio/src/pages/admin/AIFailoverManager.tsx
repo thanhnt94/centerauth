@@ -43,6 +43,7 @@ export const AIFailoverManager: React.FC = () => {
   const handleLoadModels = async (keyId: string) => {
     if (!keyId) return;
     setLoadingModels(true);
+    setDiscoveredModels([]);
     setError(null);
     try {
       const res = await fetch('/api/chat/list-models', {
@@ -58,12 +59,16 @@ export const AIFailoverManager: React.FC = () => {
           setManualInput(false);
         } else {
           setManualInput(true);
+          setError('No models returned from provider for this key. You can type the model ID manually below.');
         }
       } else {
+        const errText = await res.text();
+        setError(`Failed to load models: ${errText || res.statusText}`);
         setDiscoveredModels([]);
         setManualInput(true);
       }
-    } catch {
+    } catch (err: any) {
+      setError(`Network error loading models: ${err.message || err}`);
       setDiscoveredModels([]);
       setManualInput(true);
     } finally {

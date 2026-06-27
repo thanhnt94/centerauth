@@ -114,7 +114,8 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       key: 'queue',
       title: 'Queue Manager',
       items: [
-        { icon: <Activity size={20} />, label: 'Queue', path: '/admin/queue', color: 'text-emerald-400' },
+        { icon: <Activity size={20} />, label: 'Queue Logs', path: '/admin/queue', color: 'text-emerald-400' },
+        { icon: <Sliders size={20} />, label: 'Queue Settings', path: '/admin/queue-settings', color: 'text-emerald-300' }
       ]
     });
   }

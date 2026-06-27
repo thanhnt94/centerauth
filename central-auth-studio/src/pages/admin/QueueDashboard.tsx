@@ -43,10 +43,6 @@ export const QueueDashboard: React.FC = () => {
   const [offset, setOffset] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  const [isPaused, setIsPaused] = useState(false);
-  const [rateLimitDelay, setRateLimitDelay] = useState(60);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
-
   // Authentication header token (falls back to system config)
   const queueToken = 'super-secret-token-123';
   const headers = {
@@ -63,59 +59,6 @@ export const QueueDashboard: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to fetch queue stats:', err);
-    }
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const res = await fetch('/api/queue/settings', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setIsPaused(data.is_paused);
-        setRateLimitDelay(data.rate_limit_delay);
-      }
-    } catch (err) {
-      console.error('Failed to fetch queue settings:', err);
-    }
-  };
-
-  const handleTogglePause = async () => {
-    setIsSavingSettings(true);
-    try {
-      const res = await fetch('/api/queue/settings', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ is_paused: !isPaused })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setIsPaused(data.is_paused);
-      }
-    } catch (err) {
-      console.error('Failed to toggle queue pause:', err);
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
-
-  const handleSaveDelay = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingSettings(true);
-    try {
-      const res = await fetch('/api/queue/settings', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ rate_limit_delay: rateLimitDelay })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRateLimitDelay(data.rate_limit_delay);
-        alert('Saved queue rate limit delay successfully!');
-      }
-    } catch (err) {
-      console.error('Failed to save queue delay:', err);
-    } finally {
-      setIsSavingSettings(false);
     }
   };
 
@@ -153,11 +96,9 @@ export const QueueDashboard: React.FC = () => {
   useEffect(() => {
     fetchStats();
     fetchTasks();
-    fetchSettings();
     const interval = setInterval(() => {
       fetchStats();
       fetchTasks();
-      fetchSettings();
     }, 5000);
     return () => clearInterval(interval);
   }, [statusFilter, sourceFilter, offset, searchPrompt]);
@@ -288,53 +229,7 @@ export const QueueDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Queue Controls (Pause & Rate Limit) */}
-      <div className="glass p-6 rounded-[2rem] border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg ${isPaused ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-            {isPaused ? '⏸️' : '▶️'}
-          </div>
-          <div>
-            <h4 className="font-bold text-lg text-white">Queue Controller</h4>
-            <p className="text-xs text-slate-400">
-              {isPaused 
-                ? 'Queue is currently PAUSED. New tasks will wait in queue.' 
-                : 'Queue is currently RUNNING and processing tasks.'}
-            </p>
-          </div>
-        </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-          {/* Rate Limit Input Form */}
-          <form onSubmit={handleSaveDelay} className="flex items-center gap-2 bg-[#0d1321]/60 border border-white/10 rounded-xl px-3 py-1.5 w-full sm:w-auto">
-            <span className="text-[10px] font-black text-slate-400 uppercase whitespace-nowrap">Interval:</span>
-            <input 
-              type="number"
-              min="1"
-              value={rateLimitDelay}
-              onChange={(e) => setRateLimitDelay(parseInt(e.target.value) || 1)}
-              className="bg-transparent border-none text-white text-sm font-black focus:outline-none w-16 text-center"
-            />
-            <span className="text-[10px] font-black text-slate-400 uppercase">sec</span>
-            <button 
-              type="submit" 
-              disabled={isSavingSettings}
-              className="ml-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all disabled:opacity-50"
-            >
-              Save
-            </button>
-          </form>
-
-          {/* Pause Toggle Button */}
-          <button
-            onClick={handleTogglePause}
-            disabled={isSavingSettings}
-            className={`w-full sm:w-auto px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 disabled:opacity-50 ${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20'}`}
-          >
-            {isPaused ? 'Resume Queue' : 'Pause Queue'}
-          </button>
-        </div>
-      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">

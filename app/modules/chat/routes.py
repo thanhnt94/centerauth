@@ -608,62 +608,18 @@ async def generate_direct(
         key_id = candidate.key_id
         model = candidate.model_id
         
-        # Resolve api_key
+        # Resolve api_key from database custom keys
         api_key = None
-        if key_id == "system-google":
-            api_key = settings.GEMINI_API_KEY
-        elif key_id == "system-groq":
-            api_key = settings.GROQ_API_KEY
-        elif key_id == "system-cerebras":
-            api_key = settings.CEREBRAS_API_KEY
-        elif key_id == "system-openai":
-            api_key = settings.OPENAI_API_KEY
-        elif key_id == "system-nvidia":
-            api_key = settings.NVIDIA_API_KEY
-        elif key_id == "system-sambanova":
-            api_key = settings.SAMBANOVA_API_KEY
-        elif key_id == "system-mistral":
-            api_key = settings.MISTRAL_API_KEY
-        elif key_id == "system-cloudflare":
-            api_key = settings.CLOUDFLARE_API_KEY
-        elif key_id == "system-github_models":
-            api_key = settings.GITHUB_MODELS_API_KEY
-        elif key_id == "system-cohere":
-            api_key = settings.COHERE_API_KEY
-        elif key_id == "system-huggingface":
-            api_key = settings.HUGGINGFACE_API_KEY
-        elif key_id == "system-fireworks":
-            api_key = settings.FIREWORKS_API_KEY
-        else:
-            # Custom key - scan all admin users
-            try:
-                import json
-                for admin in admins:
-                    keys = json.loads(admin.api_keys_json or "[]")
-                    matched = next((k for k in keys if k.get("id") == key_id), None)
-                    if matched:
-                        api_key = matched.get("api_key")
-                        break
-            except Exception:
-                pass
-                
-        if not api_key:
-            # Fallback to provider fallback key
-            fallback_keys = {
-                "google": settings.GEMINI_API_KEY,
-                "openai": settings.OPENAI_API_KEY,
-                "groq": settings.GROQ_API_KEY,
-                "cerebras": settings.CEREBRAS_API_KEY,
-                "nvidia": settings.NVIDIA_API_KEY,
-                "sambanova": settings.SAMBANOVA_API_KEY,
-                "mistral": settings.MISTRAL_API_KEY,
-                "cloudflare": settings.CLOUDFLARE_API_KEY,
-                "github_models": settings.GITHUB_MODELS_API_KEY,
-                "cohere": settings.COHERE_API_KEY,
-                "huggingface": settings.HUGGINGFACE_API_KEY,
-                "fireworks": settings.FIREWORKS_API_KEY
-            }
-            api_key = fallback_keys.get(provider)
+        try:
+            import json
+            for admin in admins:
+                keys = json.loads(admin.api_keys_json or "[]")
+                matched = next((k for k in keys if k.get("id") == key_id), None)
+                if matched:
+                    api_key = matched.get("api_key")
+                    break
+        except Exception:
+            pass
             
         if not api_key:
             logger.warning(f"[FAILOVER] Key not configured for pool candidate: {candidate.key_label} ({provider})")
@@ -694,55 +650,7 @@ async def generate_direct(
     api_key = None
     model_name = ""
     
-    if active_key_id == "system-google":
-        active_provider = "google"
-        api_key = settings.GEMINI_API_KEY
-        model_name = admin_user.google_model or "gemini-2.0-flash"
-    elif active_key_id == "system-groq":
-        active_provider = "groq"
-        api_key = settings.GROQ_API_KEY
-        model_name = admin_user.groq_model or "llama-3.3-70b-versatile"
-    elif active_key_id == "system-cerebras":
-        active_provider = "cerebras"
-        api_key = settings.CEREBRAS_API_KEY
-        model_name = admin_user.cerebras_model or "llama3.1-8b"
-    elif active_key_id == "system-openai":
-        active_provider = "openai"
-        api_key = settings.OPENAI_API_KEY
-        model_name = admin_user.openai_model or "gpt-4o"
-    elif active_key_id == "system-nvidia":
-        active_provider = "nvidia"
-        api_key = settings.NVIDIA_API_KEY
-        model_name = admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"
-    elif active_key_id == "system-sambanova":
-        active_provider = "sambanova"
-        api_key = settings.SAMBANOVA_API_KEY
-        model_name = admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"
-    elif active_key_id == "system-mistral":
-        active_provider = "mistral"
-        api_key = settings.MISTRAL_API_KEY
-        model_name = admin_user.mistral_model or "mistral-large-latest"
-    elif active_key_id == "system-cloudflare":
-        active_provider = "cloudflare"
-        api_key = settings.CLOUDFLARE_API_KEY
-        model_name = admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-    elif active_key_id == "system-github_models":
-        active_provider = "github_models"
-        api_key = settings.GITHUB_MODELS_API_KEY
-        model_name = admin_user.github_models_model or "gpt-4o"
-    elif active_key_id == "system-cohere":
-        active_provider = "cohere"
-        api_key = settings.COHERE_API_KEY
-        model_name = admin_user.cohere_model or "command-r-plus"
-    elif active_key_id == "system-huggingface":
-        active_provider = "huggingface"
-        api_key = settings.HUGGINGFACE_API_KEY
-        model_name = admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"
-    elif active_key_id == "system-fireworks":
-        active_provider = "fireworks"
-        api_key = settings.FIREWORKS_API_KEY
-        model_name = admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct"
-    elif active_key_id:
+    if active_key_id:
         try:
             import json
             matched = None
@@ -783,31 +691,9 @@ async def generate_direct(
                         model_name = admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct"
         except Exception:
             pass
-            
-    if not api_key:
-        active_provider = "google"
-        api_key = settings.GEMINI_API_KEY
-        model_name = admin_user.google_model or "gemini-2.0-flash"
 
     provider = body.provider or active_provider
     model = body.model or model_name
-    
-    if not api_key and provider != active_provider:
-        fallback_keys = {
-            "google": settings.GEMINI_API_KEY,
-            "openai": settings.OPENAI_API_KEY,
-            "groq": settings.GROQ_API_KEY,
-            "cerebras": settings.CEREBRAS_API_KEY,
-            "nvidia": settings.NVIDIA_API_KEY,
-            "sambanova": settings.SAMBANOVA_API_KEY,
-            "mistral": settings.MISTRAL_API_KEY,
-            "cloudflare": settings.CLOUDFLARE_API_KEY,
-            "github_models": settings.GITHUB_MODELS_API_KEY,
-            "cohere": settings.COHERE_API_KEY,
-            "huggingface": settings.HUGGINGFACE_API_KEY,
-            "fireworks": settings.FIREWORKS_API_KEY
-        }
-        api_key = fallback_keys.get(provider)
         
     if not api_key:
         raise HTTPException(status_code=400, detail=f"API key not configured for provider '{provider}'. Tried pool candidates: {tried_candidates}")
@@ -863,37 +749,13 @@ async def get_failover_pool(
     admin_user = current_user
     available_keys = []
     if admin_user:
-        system_providers = [
-            ("google", "System Google (Gemini)", admin_user.google_api_key or settings.GEMINI_API_KEY, admin_user.google_model or "gemini-2.0-flash"),
-            ("groq", "System Groq", admin_user.groq_api_key or settings.GROQ_API_KEY, admin_user.groq_model or "llama-3.3-70b-versatile"),
-            ("openai", "System OpenAI", admin_user.openai_api_key or settings.OPENAI_API_KEY, admin_user.openai_model or "gpt-4o"),
-            ("cerebras", "System Cerebras", admin_user.cerebras_api_key or settings.CEREBRAS_API_KEY, admin_user.cerebras_model or "llama3.1-8b"),
-            ("nvidia", "System NVIDIA", admin_user.nvidia_api_key or settings.NVIDIA_API_KEY, admin_user.nvidia_model or "meta/llama-3.3-70b-instruct"),
-            ("sambanova", "System SambaNova", admin_user.sambanova_api_key or settings.SAMBANOVA_API_KEY, admin_user.sambanova_model or "Meta-Llama-3.3-70B-Instruct"),
-            ("mistral", "System Mistral", admin_user.mistral_api_key or settings.MISTRAL_API_KEY, admin_user.mistral_model or "mistral-large-latest"),
-            ("cloudflare", "System Cloudflare", admin_user.cloudflare_api_key or settings.CLOUDFLARE_API_KEY, admin_user.cloudflare_model or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
-            ("github_models", "System GitHub Models", admin_user.github_models_api_key or settings.GITHUB_MODELS_API_KEY, admin_user.github_models_model or "gpt-4o"),
-            ("cohere", "System Cohere", admin_user.cohere_api_key or settings.COHERE_API_KEY, admin_user.cohere_model or "command-r-plus"),
-            ("huggingface", "System HuggingFace", admin_user.huggingface_api_key or settings.HUGGINGFACE_API_KEY, admin_user.huggingface_model or "meta-llama/Llama-3.3-70B-Instruct"),
-            ("fireworks", "System Fireworks AI", admin_user.fireworks_api_key or settings.FIREWORKS_API_KEY, admin_user.fireworks_model or "accounts/fireworks/models/llama-v3p3-70b-instruct")
-        ]
-        
-        for provider, label, api_key_val, default_model in system_providers:
-            if api_key_val and api_key_val.strip() and api_key_val != "********":
-                available_keys.append({
-                    "key_id": f"system-{provider}",
-                    "label": label,
-                    "provider": provider,
-                    "default_model": default_model
-                })
-
         try:
             import json
             keys = json.loads(admin_user.api_keys_json or "[]")
             for k in keys:
                 available_keys.append({
                     "key_id": k.get("id"),
-                    "label": f"Custom Key: {k.get('label')}",
+                    "label": k.get("label"),
                     "provider": k.get("provider"),
                     "default_model": k.get("model", "")
                 })

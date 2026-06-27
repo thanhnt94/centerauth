@@ -578,12 +578,20 @@ async def generate_direct(
     db: AsyncSession = Depends(get_auth_db)
 ):
     """Directly generate text using active administrator configurations, with automatic failover."""
-    result = await db.execute(
+    admins_result = await db.execute(
         select(User).where(User.is_admin == True).order_by(User.id.asc())
     )
-    admin_user = result.scalars().first()
-    if not admin_user:
+    admins = admins_result.scalars().all()
+    if not admins:
         raise HTTPException(status_code=400, detail="Administrator user not configured in CentralAuth.")
+        
+    admin_user = None
+    for admin in admins:
+        if admin.active_key_id:
+            admin_user = admin
+            break
+    if not admin_user:
+        admin_user = admins[0]
 
     # 1. Try AIFailoverModel database configs first (if any are enabled)
     pool_result = await db.execute(
@@ -627,13 +635,15 @@ async def generate_direct(
         elif key_id == "system-fireworks":
             api_key = settings.FIREWORKS_API_KEY
         else:
-            # Custom key
+            # Custom key - scan all admin users
             try:
                 import json
-                keys = json.loads(admin_user.api_keys_json or "[]")
-                matched = next((k for k in keys if k.get("id") == key_id), None)
-                if matched:
-                    api_key = matched.get("api_key")
+                for admin in admins:
+                    keys = json.loads(admin.api_keys_json or "[]")
+                    matched = next((k for k in keys if k.get("id") == key_id), None)
+                    if matched:
+                        api_key = matched.get("api_key")
+                        break
             except Exception:
                 pass
                 
@@ -735,8 +745,13 @@ async def generate_direct(
     elif active_key_id:
         try:
             import json
-            keys = json.loads(admin_user.api_keys_json or "[]")
-            matched = next((k for k in keys if k.get("id") == active_key_id), None)
+            matched = None
+            for admin in admins:
+                keys = json.loads(admin.api_keys_json or "[]")
+                matched = next((k for k in keys if k.get("id") == active_key_id), None)
+                if matched:
+                    admin_user = admin  # bind to the correct admin user profile
+                    break
             if matched:
                 active_provider = matched.get("provider", "google")
                 api_key = matched.get("api_key")

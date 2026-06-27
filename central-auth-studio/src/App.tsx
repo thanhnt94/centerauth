@@ -9,6 +9,7 @@ import { Login } from './pages/auth/Login';
 import { LandingPage } from './pages/LandingPage';
 import { AIChatConsole } from './pages/admin/AIChatConsole';
 import { QueueDashboard } from './pages/admin/QueueDashboard';
+import { TTSConsole } from './pages/admin/TTSConsole';
 
 import { Logs } from './pages/admin/Logs';
 import { Settings as AdminSettings } from './pages/admin/Settings';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
               <Route path="/admin/aichat" element={<AIChatConsole defaultTab="chat" />} />
               <Route path="/admin/ai-settings" element={<AIChatConsole defaultTab="keys" />} />
               <Route path="/admin/queue" element={<QueueDashboard />} />
+              <Route path="/admin/tts" element={<TTSConsole />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

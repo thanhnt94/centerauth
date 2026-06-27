@@ -1,0 +1,12 @@
+{
+  "default_engine": "edge",
+  "default_voices": {
+    "vi": "vi-VN-HoaiMyNeural",
+    "en": "en-US-AriaNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "ko": "ko-KR-SunHiNeural"
+  },
+  "queue_worker_delay_seconds": 10,
+  "queue_max_retries": 5
+}

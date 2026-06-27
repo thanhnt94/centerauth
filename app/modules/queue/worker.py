@@ -12,12 +12,7 @@ from app.core.config import settings
 from app.modules.queue.models import QueuedTask
 from app.modules.chat.providers import get_provider, PROVIDERS
 
-class QueueWorkerState:
-    def __init__(self):
-        self.is_paused = False
-        self.rate_limit_delay = int(os.environ.get("QUEUE_RATE_LIMIT_DELAY", 60))
 
-worker_state = QueueWorkerState()
 
 logger = logging.getLogger(__name__)
 
@@ -160,15 +155,31 @@ async def start_queue_worker():
     database, processes them through the AI provider chain, and delivers
     results via callbacks.
     """
-    logger.info(f"[QueueWorker] Started — polling based on worker_state configuration")
+    logger.info(f"[QueueWorker] Started — polling based on database configurations")
 
     while True:
-        if worker_state.is_paused:
+        # Check system settings for queue config
+        is_paused = False
+        delay = 60
+        try:
+            async with SessionLocal() as db:
+                from app.modules.admin.models import SystemSetting
+                
+                # Check is_paused
+                res_paused = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_is_paused"))
+                paused_setting = res_paused.scalar_one_or_none()
+                is_paused = (paused_setting.value == "true") if paused_setting else False
+
+                # Check rate_limit_delay
+                res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay"))
+                delay_setting = res_delay.scalar_one_or_none()
+                delay = int(delay_setting.value) if delay_setting else 60
+        except Exception as db_err:
+            logger.warning(f"[QueueWorker] Failed to query system_settings: {db_err}")
+
+        if is_paused:
             await asyncio.sleep(2)
             continue
-
-        delay = worker_state.rate_limit_delay
-        is_tts = False
         try:
             async with SessionLocal() as db:
                 # --------------------------------------------------

@@ -240,25 +240,48 @@ async def retry_task(
     return task
 
 @router.get("/settings")
-async def get_queue_settings(_auth: bool = Depends(verify_queue_token)):
-    from app.modules.queue.worker import worker_state
+async def get_queue_settings(db: AsyncSession = Depends(get_db), _auth: bool = Depends(verify_queue_token)):
+    from app.modules.admin.models import SystemSetting
+    
+    # Query is_paused
+    res_paused = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_is_paused"))
+    paused_setting = res_paused.scalar_one_or_none()
+    is_paused = (paused_setting.value == "true") if paused_setting else False
+
+    # Query rate_limit_delay
+    res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay"))
+    delay_setting = res_delay.scalar_one_or_none()
+    rate_limit_delay = int(delay_setting.value) if delay_setting else 60
+
     return {
-        "is_paused": worker_state.is_paused,
-        "rate_limit_delay": worker_state.rate_limit_delay
+        "is_paused": is_paused,
+        "rate_limit_delay": rate_limit_delay
     }
 
 @router.post("/settings")
-async def update_queue_settings(data: dict, _auth: bool = Depends(verify_queue_token)):
-    from app.modules.queue.worker import worker_state
+async def update_queue_settings(data: dict, db: AsyncSession = Depends(get_db), _auth: bool = Depends(verify_queue_token)):
+    from app.modules.admin.models import SystemSetting
+    
     if "is_paused" in data:
-        worker_state.is_paused = bool(data["is_paused"])
+        is_paused_str = "true" if data["is_paused"] else "false"
+        res_paused = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_is_paused"))
+        paused_setting = res_paused.scalar_one_or_none()
+        if paused_setting:
+            paused_setting.value = is_paused_str
+        else:
+            db.add(SystemSetting(key="queue_is_paused", value=is_paused_str, description="Is background task queue paused", category="Queue"))
+            
     if "rate_limit_delay" in data:
         try:
-            worker_state.rate_limit_delay = max(1, int(data["rate_limit_delay"]))
+            delay_val = max(1, int(data["rate_limit_delay"]))
+            res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay"))
+            delay_setting = res_delay.scalar_one_or_none()
+            if delay_setting:
+                delay_setting.value = str(delay_val)
+            else:
+                db.add(SystemSetting(key="queue_rate_limit_delay", value=str(delay_val), description="Delay interval between queue tasks", category="Queue"))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid rate_limit_delay")
-    return {
-        "status": "success",
-        "is_paused": worker_state.is_paused,
-        "rate_limit_delay": worker_state.rate_limit_delay
-    }
+            
+    await db.commit()
+    return await get_queue_settings(db, _auth)

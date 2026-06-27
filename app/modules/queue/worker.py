@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import httpx
+import os
 from datetime import datetime
 from sqlalchemy import select, func
 
@@ -158,6 +159,7 @@ async def start_queue_worker():
     logger.info(f"[QueueWorker] Started — polling every {delay}s")
 
     while True:
+        is_tts = False
         try:
             async with SessionLocal() as db:
                 # --------------------------------------------------
@@ -190,65 +192,98 @@ async def start_queue_worker():
                     f"(source={task.satellite_source}, attempt={task.attempts})"
                 )
 
-                # --------------------------------------------------
-                # 3. Resolve provider (with failover)
-                # --------------------------------------------------
-                from app.modules.identity.models import User
-                async with CentralAuthSessionLocal() as auth_db:
-                    admin_result = await auth_db.execute(
-                        select(User).where(User.is_admin == True).limit(1)
-                    )
-                    admin_user = admin_result.scalar_one_or_none()
+                # Check if this is a TTS task via extra_data JSON
+                if task.extra_data:
+                    try:
+                        extra = json.loads(task.extra_data)
+                        if extra.get("task_type") == "tts":
+                            is_tts = True
+                    except Exception:
+                        pass
 
-                if not admin_user:
-                    task.status = "failed"
-                    task.error = "No admin user found — cannot resolve AI provider credentials."
-                    task.completed_at = datetime.utcnow()
-                    await db.commit()
-                    await asyncio.sleep(delay)
-                    continue
-
-                provider, provider_name = await _resolve_provider(task, admin_user)
-
-                if not provider:
-                    task.status = "failed"
-                    task.error = "All AI providers exhausted — no valid API key found."
-                    task.completed_at = datetime.utcnow()
-                    await db.commit()
-                    await _send_callback(task)
-                    await db.commit()
-                    await asyncio.sleep(delay)
-                    continue
-
-                # --------------------------------------------------
-                # 4. Generate response
-                # --------------------------------------------------
-                try:
-                    response_text = await _generate_text_full(provider, task.prompt)
-
-                    # Check for inline error messages from providers
-                    if response_text.strip().startswith("[") and "Error" in response_text:
-                        raise Exception(response_text)
-
-                    task.status = "completed"
-                    task.result = response_text
-                    task.provider = provider_name
-                    task.completed_at = datetime.utcnow()
-                    logger.info(
-                        f"[QueueWorker] Task {task.id} completed "
-                        f"(provider={provider_name}, chars={len(response_text)})"
-                    )
-
-                except Exception as gen_err:
-                    logger.error(f"[QueueWorker] Generation failed for task {task.id}: {gen_err}")
-
-                    if task.attempts < task.max_retries:
-                        task.status = "pending"  # Re-queue for retry
-                        task.error = f"Attempt {task.attempts} failed: {str(gen_err)[:500]}"
-                    else:
-                        task.status = "failed"
-                        task.error = f"Max retries exceeded. Last error: {str(gen_err)[:500]}"
+                if is_tts:
+                    # TTS processing route
+                    try:
+                        from app.modules.tts.services import AudioGenerator
+                        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
+                        os.makedirs(upload_dir, exist_ok=True)
+                        
+                        filename = f"tts_{AudioGenerator.get_voice_hash(task.prompt)}.mp3"
+                        physical_path = os.path.join(upload_dir, filename)
+                        
+                        success = await AudioGenerator.generate_tts(task.prompt, physical_path)
+                        if not success:
+                            raise Exception("Failed to synthesize TTS")
+                            
+                        task.status = "completed"
+                        task.result = f"/static/uploads/tts/{filename}"
                         task.completed_at = datetime.utcnow()
+                        logger.info(f"[QueueWorker] TTS Task {task.id} completed successfully.")
+                    except Exception as tts_err:
+                        logger.error(f"[QueueWorker] TTS generation failed for task {task.id}: {tts_err}")
+                        if task.attempts < task.max_retries:
+                            task.status = "pending"
+                            task.error = f"Attempt {task.attempts} failed: {str(tts_err)[:500]}"
+                        else:
+                            task.status = "failed"
+                            task.error = f"Max retries exceeded. Last error: {str(tts_err)[:500]}"
+                            task.completed_at = datetime.utcnow()
+                else:
+                    # Normal Text Generation task
+                    from app.modules.identity.models import User
+                    async with CentralAuthSessionLocal() as auth_db:
+                        admin_result = await auth_db.execute(
+                            select(User).where(User.is_admin == True).limit(1)
+                        )
+                        admin_user = admin_result.scalar_one_or_none()
+
+                    if not admin_user:
+                        task.status = "failed"
+                        task.error = "No admin user found — cannot resolve AI provider credentials."
+                        task.completed_at = datetime.utcnow()
+                        await db.commit()
+                        await asyncio.sleep(delay)
+                        continue
+
+                    provider, provider_name = await _resolve_provider(task, admin_user)
+
+                    if not provider:
+                        task.status = "failed"
+                        task.error = "All AI providers exhausted — no valid API key found."
+                        task.completed_at = datetime.utcnow()
+                        await db.commit()
+                        await _send_callback(task)
+                        await db.commit()
+                        await asyncio.sleep(delay)
+                        continue
+
+                    try:
+                        response_text = await _generate_text_full(provider, task.prompt)
+
+                        # Check for inline error messages from providers
+                        if response_text.strip().startswith("[") and "Error" in response_text:
+                            raise Exception(response_text)
+
+                        task.status = "completed"
+                        task.result = response_text
+                        task.provider = provider_name
+                        task.completed_at = datetime.utcnow()
+                        logger.info(
+                            f"[QueueWorker] Task {task.id} completed "
+                            f"(provider={provider_name}, chars={len(response_text)})"
+                        )
+
+                    except Exception as gen_err:
+                        logger.error(f"[QueueWorker] Generation failed for task {task.id}: {gen_err}")
+
+                        if task.attempts < task.max_retries:
+                            task.status = "pending"  # Re-queue for retry
+                            task.error = f"Attempt {task.attempts} failed: {str(gen_err)[:500]}"
+                        else:
+                            task.status = "failed"
+                            task.error = f"Max retries exceeded. Last error: {str(gen_err)[:500]}"
+                            task.completed_at = datetime.utcnow()
 
                 # --------------------------------------------------
                 # 5. Deliver callback & persist
@@ -262,5 +297,8 @@ async def start_queue_worker():
         except Exception as loop_err:
             logger.error(f"[QueueWorker] Unexpected loop error: {loop_err}", exc_info=True)
 
-        # Rate-limit sleep
-        await asyncio.sleep(delay)
+        # Rate-limit sleep (shorter for TTS tasks)
+        if is_tts:
+            await asyncio.sleep(0.2)
+        else:
+            await asyncio.sleep(delay)

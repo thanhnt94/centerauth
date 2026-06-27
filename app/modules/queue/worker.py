@@ -162,7 +162,7 @@ async def start_queue_worker():
         is_paused = False
         delay = 60
         try:
-            async with SessionLocal() as db:
+            async with CentralAuthSessionLocal() as db:
                 from app.modules.admin.models import SystemSetting
                 
                 # Check is_paused

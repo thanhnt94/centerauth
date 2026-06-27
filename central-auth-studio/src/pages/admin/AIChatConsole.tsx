@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bot, MessageSquare, Send, Plus, Trash2, 
-  RefreshCw, Eye, EyeOff, Loader2,
+  RefreshCw, Eye, EyeOff, Loader2, Copy, Edit2,
   AlertCircle, Terminal, Check, UserCheck
 } from 'lucide-react';
 
@@ -66,6 +66,103 @@ const PROVIDER_LABELS: Record<string, string> = {
   fireworks: 'Fireworks AI'
 };
 
+interface ConfiguredAccountCardProps {
+  apiKeyItem: CustomApiKey;
+  isActive: boolean;
+  onSetActive: (id: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onEdit: (apiKeyItem: CustomApiKey) => void;
+}
+
+const ConfiguredAccountCard: React.FC<ConfiguredAccountCardProps> = ({
+  apiKeyItem,
+  isActive,
+  onSetActive,
+  onDelete,
+  onEdit
+}) => {
+  const [showKey, setShowKey] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(apiKeyItem.api_key);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div 
+      className={`p-5 rounded-2xl border flex flex-col justify-between gap-4 transition-all
+        ${isActive 
+          ? 'bg-indigo-600/5 border-indigo-600/30' 
+          : 'bg-slate-900/40 border-white/5'}`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="w-full">
+          <p className="text-sm font-bold text-white flex items-center gap-2">
+            {apiKeyItem.label}
+            {isActive && (
+              <span className="flex items-center gap-1 text-[9px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                <Check size={8} /> Active
+              </span>
+            )}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-1">Default Model: <code className="text-slate-400 font-mono">{apiKeyItem.model || 'Default'}</code></p>
+          
+          <div className="flex items-center justify-between gap-2 mt-2 bg-slate-950/40 border border-white/5 rounded-xl px-3 py-2">
+            <span className="text-[9px] text-slate-400 font-mono truncate max-w-[180px]">
+              Key: {showKey ? apiKeyItem.api_key : '••••••••••••••••'}
+            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button 
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="p-1 hover:text-indigo-400 text-slate-500 transition-colors"
+                title={showKey ? "Hide Key" : "Show Key"}
+              >
+                {showKey ? <EyeOff size={11} /> : <Eye size={11} />}
+              </button>
+              <button 
+                type="button"
+                onClick={handleCopy}
+                className="p-1 hover:text-indigo-400 text-slate-500 transition-colors"
+                title="Copy Key"
+              >
+                {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex gap-2">
+        {!isActive && (
+          <button
+            onClick={() => onSetActive(apiKeyItem.id)}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all"
+          >
+            Set Active
+          </button>
+        )}
+        <button
+          onClick={() => onEdit(apiKeyItem)}
+          className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 p-2.5 rounded-xl transition-all"
+          title="Edit Credentials"
+        >
+          <Edit2 size={12} />
+        </button>
+        <button
+          onClick={() => onDelete(apiKeyItem.id)}
+          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 p-2.5 rounded-xl transition-all"
+          title="Delete Account"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 interface AIChatConsoleProps {
   defaultTab?: 'chat' | 'keys';
 }
@@ -98,6 +195,13 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
   const [customKeys, setCustomKeys] = useState<CustomApiKey[]>([]);
   const [activeProviderTab, setActiveProviderTab] = useState<string>('google');
   const [discoverError, setDiscoverError] = useState<string | null>(null);
+  
+  const [editingKeyItem, setEditingKeyItem] = useState<CustomApiKey | null>(null);
+
+  // Clear editing state when active provider tab changes
+  useEffect(() => {
+    setEditingKeyItem(null);
+  }, [activeProviderTab]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -354,36 +458,54 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
     }
   };
 
-  const handleAddCustomKey = async (label: string, key: string, provider: string, model: string) => {
+  const handleSaveCustomKey = async (label: string, key: string, provider: string, model: string, editId?: string) => {
     if (!label.trim() || !key.trim()) {
       alert('Label and API Key are required.');
       return;
     }
-    const newKeyItem: CustomApiKey = {
-      id: 'custom-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-      label: label.trim(),
-      provider,
-      api_key: key.trim(),
-      model
-    };
 
-    const updatedKeys = [...customKeys, newKeyItem];
+    let updatedKeys: CustomApiKey[];
+    let resolvedActiveId = activeKeyId;
+
+    if (editId) {
+      // Edit mode
+      updatedKeys = customKeys.map(k => {
+        if (k.id === editId) {
+          return { ...k, label: label.trim(), api_key: key.trim(), model };
+        }
+        return k;
+      });
+    } else {
+      // Add mode
+      const newKeyItem: CustomApiKey = {
+        id: 'custom-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        label: label.trim(),
+        provider,
+        api_key: key.trim(),
+        model
+      };
+      updatedKeys = [...customKeys, newKeyItem];
+      resolvedActiveId = newKeyItem.id;
+    }
+
     try {
       const res = await fetch('/api/chat/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           api_keys_json: JSON.stringify(updatedKeys),
-          active_key_id: newKeyItem.id 
+          active_key_id: resolvedActiveId 
         })
       });
       if (res.ok) {
         setCustomKeys(updatedKeys);
-        setActiveKeyId(newKeyItem.id);
-        alert('Custom API key added successfully!');
+        setActiveKeyId(resolvedActiveId);
+        setEditingKeyItem(null);
+      } else {
+        alert('Failed to save settings.');
       }
     } catch (err) {
-      alert('Failed to save key.');
+      console.error('Failed to save custom key:', err);
     }
   };
 
@@ -723,46 +845,14 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {customKeys.filter(k => k.provider === activeProviderTab).map(k => (
-                    <div 
-                      key={k.id} 
-                      className={`p-5 rounded-2xl border flex flex-col justify-between gap-4 transition-all
-                        ${activeKeyId === k.id 
-                          ? 'bg-indigo-600/5 border-indigo-600/30' 
-                          : 'bg-slate-900/40 border-white/5'}`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-bold text-white flex items-center gap-2">
-                            {k.label}
-                            {activeKeyId === k.id && (
-                              <span className="flex items-center gap-1 text-[9px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
-                                <Check size={8} /> Active
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-[10px] text-slate-500 mt-1">Default Model: <code className="text-slate-400 font-mono">{k.model || 'Default'}</code></p>
-                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">Key: ****************</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        {activeKeyId !== k.id && (
-                          <button
-                            onClick={() => handleSaveActiveKeyId(k.id)}
-                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all"
-                          >
-                            Set Active
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteCustomKey(k.id)}
-                          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 p-2.5 rounded-xl transition-all"
-                          title="Delete Account"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
+                    <ConfiguredAccountCard
+                      key={k.id}
+                      apiKeyItem={k}
+                      isActive={activeKeyId === k.id}
+                      onSetActive={handleSaveActiveKeyId}
+                      onDelete={handleDeleteCustomKey}
+                      onEdit={setEditingKeyItem}
+                    />
                   ))}
                 </div>
               )}
@@ -771,9 +861,11 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
             {/* Add custom key form */}
             <AddCustomKeyForm 
               provider={activeProviderTab}
-              onAdd={handleAddCustomKey}
+              onSave={handleSaveCustomKey}
               discoverError={discoverError}
               setDiscoverError={setDiscoverError}
+              editingKeyItem={editingKeyItem}
+              onCancelEdit={() => setEditingKeyItem(null)}
             />
           </div>
         </div>
@@ -785,16 +877,20 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
 // Form sub-component for adding keys with interactive model discovery
 interface AddCustomKeyFormProps {
   provider: string;
-  onAdd: (label: string, key: string, provider: string, model: string) => Promise<void>;
+  onSave: (label: string, key: string, provider: string, model: string, editId?: string) => Promise<void>;
   discoverError: string | null;
   setDiscoverError: (err: string | null) => void;
+  editingKeyItem: CustomApiKey | null;
+  onCancelEdit: () => void;
 }
 
 const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
   provider,
-  onAdd,
+  onSave,
   discoverError,
-  setDiscoverError
+  setDiscoverError,
+  editingKeyItem,
+  onCancelEdit
 }) => {
   const [label, setLabel] = useState('');
   const [key, setKey] = useState('');
@@ -803,17 +899,25 @@ const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
   const [discovered, setDiscovered] = useState<{id: string, display_name: string}[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Clear state when provider changes
+  // Clear state when provider changes or editing item changes
   useEffect(() => {
-    setLabel('');
-    setKey('');
-    setModel('');
-    setDiscovered([]);
-    setDiscoverError(null);
-  }, [provider]);
+    if (editingKeyItem) {
+      setLabel(editingKeyItem.label);
+      setKey(editingKeyItem.api_key);
+      setModel(editingKeyItem.model);
+      handleVerify(editingKeyItem.api_key);
+    } else {
+      setLabel('');
+      setKey('');
+      setModel('');
+      setDiscovered([]);
+      setDiscoverError(null);
+    }
+  }, [provider, editingKeyItem]);
 
-  const handleVerify = async () => {
-    if (!key.trim()) {
+  const handleVerify = async (providedKey?: string) => {
+    const keyToVerify = providedKey || key;
+    if (!keyToVerify.trim()) {
       alert('API Key is required to verify.');
       return;
     }
@@ -823,13 +927,17 @@ const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
       const res = await fetch('/api/chat/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, api_key: key.trim() })
+        body: JSON.stringify({ provider, api_key: keyToVerify.trim() })
       });
       if (res.ok) {
         const models = await res.json();
         setDiscovered(models);
         if (models.length > 0) {
-          setModel(models[0].id);
+          if (editingKeyItem && models.some((m: any) => m.id === editingKeyItem.model)) {
+            setModel(editingKeyItem.model);
+          } else {
+            setModel(models[0].id);
+          }
         }
       } else {
         const err = await res.json();
@@ -846,7 +954,7 @@ const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onAdd(label, key, provider, model);
+    await onSave(label, key, provider, model, editingKeyItem?.id);
     setLabel('');
     setKey('');
     setModel('');
@@ -855,7 +963,9 @@ const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="glass p-6 rounded-2xl border border-white/5 space-y-4 max-w-xl">
-      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Add New Account</h4>
+      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">
+        {editingKeyItem ? `Edit Account: ${editingKeyItem.label}` : 'Add New Account'}
+      </h4>
       
       <div className="space-y-3">
         {/* Label */}
@@ -911,7 +1021,7 @@ const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
             </select>
             <button
               type="button"
-              onClick={handleVerify}
+              onClick={() => handleVerify()}
               disabled={loading || !key.trim()}
               className="bg-white/5 hover:bg-white/10 disabled:opacity-30 border border-white/10 text-xs font-bold px-4 py-2 rounded-xl text-slate-300 transition-all flex items-center gap-1.5"
             >
@@ -923,19 +1033,29 @@ const AddCustomKeyForm: React.FC<AddCustomKeyFormProps> = ({
       </div>
 
       {discoverError && (
-        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center gap-1.5 font-bold">
-          <AlertCircle size={14} />
-          <span>{discoverError}</span>
+        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold">
+          {discoverError}
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={!label.trim() || !key.trim()}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black uppercase tracking-wider text-xs py-3 px-4 rounded-xl transition-all"
-      >
-        Add Account Credentials
-      </button>
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={!label.trim() || !key.trim()}
+          className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all"
+        >
+          {editingKeyItem ? 'Update Credentials' : 'Save Credentials'}
+        </button>
+        {editingKeyItem && (
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="bg-slate-800 hover:bg-slate-750 border border-white/5 text-slate-300 text-xs font-bold py-2.5 px-4 rounded-xl transition-all"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 };

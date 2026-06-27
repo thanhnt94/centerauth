@@ -227,3 +227,27 @@ async def retry_task(
     await db.commit()
     await db.refresh(task)
     return task
+
+@router.get("/settings")
+async def get_queue_settings(_auth: bool = Depends(verify_queue_token)):
+    from app.modules.queue.worker import worker_state
+    return {
+        "is_paused": worker_state.is_paused,
+        "rate_limit_delay": worker_state.rate_limit_delay
+    }
+
+@router.post("/settings")
+async def update_queue_settings(data: dict, _auth: bool = Depends(verify_queue_token)):
+    from app.modules.queue.worker import worker_state
+    if "is_paused" in data:
+        worker_state.is_paused = bool(data["is_paused"])
+    if "rate_limit_delay" in data:
+        try:
+            worker_state.rate_limit_delay = max(1, int(data["rate_limit_delay"]))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid rate_limit_delay")
+    return {
+        "status": "success",
+        "is_paused": worker_state.is_paused,
+        "rate_limit_delay": worker_state.rate_limit_delay
+    }

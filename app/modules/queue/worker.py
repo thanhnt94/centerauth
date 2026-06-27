@@ -12,6 +12,13 @@ from app.core.config import settings
 from app.modules.queue.models import QueuedTask
 from app.modules.chat.providers import get_provider, PROVIDERS
 
+class QueueWorkerState:
+    def __init__(self):
+        self.is_paused = False
+        self.rate_limit_delay = int(os.environ.get("QUEUE_RATE_LIMIT_DELAY", 60))
+
+worker_state = QueueWorkerState()
+
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
@@ -152,13 +159,15 @@ async def start_queue_worker():
     Long-running background coroutine that picks pending tasks from the
     database, processes them through the AI provider chain, and delivers
     results via callbacks.
-    
-    Rate-limited by QUEUE_RATE_LIMIT_DELAY (default 60s between tasks).
     """
-    delay = getattr(settings, "QUEUE_RATE_LIMIT_DELAY", 60)
-    logger.info(f"[QueueWorker] Started — polling every {delay}s")
+    logger.info(f"[QueueWorker] Started — polling based on worker_state configuration")
 
     while True:
+        if worker_state.is_paused:
+            await asyncio.sleep(2)
+            continue
+
+        delay = worker_state.rate_limit_delay
         is_tts = False
         try:
             async with SessionLocal() as db:

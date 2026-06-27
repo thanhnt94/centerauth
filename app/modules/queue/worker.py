@@ -194,7 +194,12 @@ async def start_queue_worker():
                 task.status = "processing"
                 task.processed_at = datetime.utcnow()
                 task.attempts += 1
-                await db.commit()
+                try:
+                    await db.commit()
+                except Exception as commit_err:
+                    await db.rollback()
+                    logger.warning(f"[QueueWorker] Failed to mark task {task.id} as processing (likely deleted): {commit_err}")
+                    continue
 
                 logger.info(
                     f"[QueueWorker] Processing task {task.id} "
@@ -297,11 +302,20 @@ async def start_queue_worker():
                 # --------------------------------------------------
                 # 5. Deliver callback & persist
                 # --------------------------------------------------
-                await db.commit()
+                try:
+                    await db.commit()
+                except Exception as commit_err:
+                    await db.rollback()
+                    logger.warning(f"[QueueWorker] Failed to save finished task {task.id} (likely deleted): {commit_err}")
+                    continue
 
                 if task.status in ("completed", "failed") and task.callback_url:
                     await _send_callback(task)
-                    await db.commit()
+                    try:
+                        await db.commit()
+                    except Exception as callback_commit_err:
+                        await db.rollback()
+                        logger.warning(f"[QueueWorker] Failed to save callback delivery status for task {task.id}: {callback_commit_err}")
 
         except Exception as loop_err:
             logger.error(f"[QueueWorker] Unexpected loop error: {loop_err}", exc_info=True)

@@ -230,21 +230,46 @@ async def start_queue_worker():
                     # TTS processing route
                     try:
                         from app.modules.tts.services import AudioGenerator
+                        from app.modules.tts.models import TTSCache
+                        
                         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                         upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
                         os.makedirs(upload_dir, exist_ok=True)
                         
-                        filename = f"tts_{AudioGenerator.get_voice_hash(task.prompt)}.mp3"
+                        prompt_hash = AudioGenerator.get_voice_hash(task.prompt)
+                        filename = f"tts_{prompt_hash}.mp3"
                         physical_path = os.path.join(upload_dir, filename)
                         
-                        success = await AudioGenerator.generate_tts(task.prompt, physical_path)
-                        if not success:
-                            raise Exception("Failed to synthesize TTS")
+                        # Query TTSCache database table
+                        cache_res = await db.execute(select(TTSCache).where(TTSCache.prompt_hash == prompt_hash))
+                        cache_item = cache_res.scalar_one_or_none()
+                        
+                        if cache_item and os.path.exists(cache_item.file_path):
+                            logger.info(f"[QueueWorker] TTS cache hit in DB for prompt: {task.prompt[:30]}...")
+                            task.status = "completed"
+                            task.result = f"/static/uploads/tts/{filename}"
+                            task.completed_at = datetime.utcnow()
+                        else:
+                            success = await AudioGenerator.generate_tts(task.prompt, physical_path)
+                            if not success:
+                                raise Exception("Failed to synthesize TTS")
+                                
+                            # Save to TTSCache database table
+                            if not cache_item:
+                                cache_item = TTSCache(
+                                    prompt_hash=prompt_hash,
+                                    text=task.prompt,
+                                    file_path=physical_path
+                                )
+                                db.add(cache_item)
+                            else:
+                                cache_item.file_path = physical_path
+                            await db.flush()
                             
-                        task.status = "completed"
-                        task.result = f"/static/uploads/tts/{filename}"
-                        task.completed_at = datetime.utcnow()
-                        logger.info(f"[QueueWorker] TTS Task {task.id} completed successfully.")
+                            task.status = "completed"
+                            task.result = f"/static/uploads/tts/{filename}"
+                            task.completed_at = datetime.utcnow()
+                            logger.info(f"[QueueWorker] TTS Task {task.id} completed successfully and saved to DB cache.")
                     except Exception as tts_err:
                         logger.error(f"[QueueWorker] TTS generation failed for task {task.id}: {tts_err}")
                         if task.attempts < task.max_retries:

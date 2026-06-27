@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
             print(f"[MIGRATION ERROR] Failed to migrate users table: {migration_error}")
             
     # 2. Create tables for AIChat DB
+    from app.modules.tts.models import TTSCache
     async with aichat_engine.begin() as conn:
         await conn.run_sync(AIChatBase.metadata.create_all)
         print("[AICHAT] Database tables initialized.")

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Activity, RefreshCw, Trash2, 
-  CheckCircle, XCircle, Clock, Search, Loader2
+  CheckCircle, XCircle, Clock, Search, Loader2, Volume2, FileText
 } from 'lucide-react';
 
 interface TaskItem {
@@ -34,6 +34,7 @@ export const QueueDashboard: React.FC = () => {
   const [stats, setStats] = useState<QueueStats>({ pending: 0, processing: 0, completed: 0, failed: 0, total: 0 });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [viewingResult, setViewingResult] = useState<string | null>(null);
   
   // Filters & Pagination
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -400,10 +401,33 @@ export const QueueDashboard: React.FC = () => {
                         )}
                       </div>
                     </td>
-
                     {/* Actions */}
                     <td className="py-6 px-8 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {task.status === 'completed' && task.result && task.result.includes('/static/uploads/tts/') && (
+                          <button
+                            onClick={() => {
+                              const audioUrl = task.result;
+                              const audio = new Audio(audioUrl);
+                              audio.play().catch(e => alert('Cannot play audio: ' + e));
+                            }}
+                            className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 p-2.5 rounded-xl transition-all"
+                            title="Play TTS Audio"
+                          >
+                            <Volume2 size={14} />
+                          </button>
+                        )}
+
+                        {task.status === 'completed' && task.result && !task.result.includes('/static/uploads/tts/') && (
+                          <button
+                            onClick={() => setViewingResult(task.result || null)}
+                            className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 p-2.5 rounded-xl transition-all"
+                            title="View Generated Result"
+                          >
+                            <FileText size={14} />
+                          </button>
+                        )}
+
                         {task.status === 'failed' && (
                           <button
                             onClick={() => handleRetryTask(task.id)}
@@ -457,6 +481,28 @@ export const QueueDashboard: React.FC = () => {
           </div>
         )}
       </div>
+      {/* Result Viewer Modal */}
+      {viewingResult !== null && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass max-w-2xl w-full p-8 rounded-[2rem] border border-white/10 flex flex-col max-h-[85vh] animate-fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <FileText className="text-indigo-400" size={20} />
+                AI Generated Result
+              </h3>
+              <button 
+                onClick={() => setViewingResult(null)} 
+                className="text-slate-500 hover:text-white font-bold text-sm bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition-all active:scale-95"
+              >
+                Close [X]
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 bg-slate-900/60 p-6 rounded-xl border border-white/5 text-sm text-slate-300 font-medium whitespace-pre-wrap font-sans max-h-[50vh]">
+              {viewingResult}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

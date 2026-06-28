@@ -393,3 +393,126 @@ async def generate_sync(
     except Exception as gen_err:
         logger.error(f"[GenerateSync] Generation failed: {gen_err}")
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(gen_err)[:500]}")
+
+
+# -------------------------------------------------------------------
+# Centralized Telegram endpoints
+# -------------------------------------------------------------------
+import secrets
+from app.modules.queue.models import UserTelegramConfig
+from app.modules.admin.models import SystemSetting
+
+@router.get("/telegram/config/{sso_user_id}")
+async def get_telegram_config(
+    sso_user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Retrieve or create centralized Telegram configuration for a given SSO user ID."""
+    res = await db.execute(select(UserTelegramConfig).where(UserTelegramConfig.user_id == sso_user_id))
+    config = res.scalar_one_or_none()
+    
+    if not config:
+        config = UserTelegramConfig(
+            user_id=sso_user_id,
+            connect_token=secrets.token_hex(6).upper()
+        )
+        db.add(config)
+        await db.commit()
+        await db.refresh(config)
+        
+    username_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "telegram_bot_username"))
+    username_setting = username_res.scalar_one_or_none()
+    bot_username = username_setting.value.strip() if username_setting and username_setting.value else "VocaburnBot"
+    
+    return {
+        "is_linked": bool(config.telegram_chat_id),
+        "connect_token": config.connect_token,
+        "reminder_time": config.reminder_time,
+        "is_active": config.is_active,
+        "streak_guard_enabled": config.streak_guard_enabled,
+        "weekly_summary_enabled": config.weekly_summary_enabled,
+        "inactivity_alert_enabled": config.inactivity_alert_enabled,
+        "bot_username": bot_username
+    }
+
+@router.post("/telegram/config/{sso_user_id}")
+async def update_telegram_config(
+    sso_user_id: int,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Update centralized Telegram configuration or unlink for a given SSO user ID."""
+    res = await db.execute(select(UserTelegramConfig).where(UserTelegramConfig.user_id == sso_user_id))
+    config = res.scalar_one_or_none()
+    
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+        
+    if "reminder_time" in data:
+        config.reminder_time = data["reminder_time"]
+    if "is_active" in data:
+        config.is_active = data["is_active"]
+    if "streak_guard_enabled" in data:
+        config.streak_guard_enabled = data["streak_guard_enabled"]
+    if "weekly_summary_enabled" in data:
+        config.weekly_summary_enabled = data["weekly_summary_enabled"]
+    if "inactivity_alert_enabled" in data:
+        config.inactivity_alert_enabled = data["inactivity_alert_enabled"]
+    if data.get("unlink") is True:
+        config.telegram_chat_id = None
+        config.connect_token = secrets.token_hex(6).upper() # reset token
+        
+    await db.commit()
+    return {"status": "success"}
+
+@router.post("/telegram/send-message")
+async def send_telegram_message(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Route message delivery through the centralized Telegram Bot."""
+    chat_id = data.get("chat_id")
+    text = data.get("text")
+    
+    if not chat_id or not text:
+        raise HTTPException(status_code=400, detail="Missing chat_id or text")
+        
+    from app.modules.queue.telegram_bot import bot
+    if not bot:
+        # Try dynamic initialization check
+        from app.modules.queue.telegram_bot import start_telegram_bot
+        # We don't block here, but we warn
+        logger.warning("[TelegramBot] Centralized Bot instance is not active/running.")
+        raise HTTPException(status_code=503, detail="Telegram Bot is not active on CentralAuth server.")
+        
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"[TelegramBot] Centralized send failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/telegram/configs")
+async def get_all_telegram_configs(
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Retrieve all user Telegram configurations (used by satellite scheduler loops)."""
+    res = await db.execute(select(UserTelegramConfig))
+    configs = res.scalars().all()
+    return [
+        {
+            "user_id": c.user_id,
+            "telegram_chat_id": c.telegram_chat_id,
+            "reminder_time": c.reminder_time,
+            "is_active": c.is_active,
+            "streak_guard_enabled": c.streak_guard_enabled,
+            "weekly_summary_enabled": c.weekly_summary_enabled,
+            "inactivity_alert_enabled": c.inactivity_alert_enabled
+        }
+        for c in configs
+    ]

@@ -50,3 +50,21 @@ class QueuedTask(Base):
             except Exception:
                 pass
         return "ai-explain"
+
+
+from sqlalchemy import Boolean
+
+class UserTelegramConfig(Base):
+    __tablename__ = "user_telegram_configs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, unique=True, index=True)
+    telegram_chat_id = Column(String(100), nullable=True, index=True)
+    connect_token = Column(String(50), nullable=True, unique=True)
+    reminder_time = Column(String(10), default="20:00") # Format: HH:MM
+    is_active = Column(Boolean, default=True)
+    streak_guard_enabled = Column(Boolean, default=True)
+    weekly_summary_enabled = Column(Boolean, default=True)
+    inactivity_alert_enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

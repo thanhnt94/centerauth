@@ -104,15 +104,23 @@ async def lifespan(app: FastAPI):
     # 4. Start background queue worker
     worker_task = asyncio.create_task(start_queue_worker())
     print("[QUEUE] Background worker started.")
+
+    # 5. Start background Telegram Bot polling
+    from app.modules.queue.telegram_bot import start_telegram_bot, stop_bot_app
+    bot_task = asyncio.create_task(start_telegram_bot())
+    print("[TELEGRAM] Centralized Bot background task spawned.")
             
     yield
 
     # Cleanup: cancel worker on shutdown
     worker_task.cancel()
+    bot_task.cancel()
     try:
-        await worker_task
-    except asyncio.CancelledError:
-        print("[QUEUE] Background worker stopped.")
+        await asyncio.gather(worker_task, bot_task, return_exceptions=True)
+    except Exception:
+        pass
+    await stop_bot_app()
+    print("[QUEUE/TELEGRAM] Background services stopped.")
 
 app = FastAPI(
     title="CentralAuth Identity Hub",

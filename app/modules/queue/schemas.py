@@ -36,6 +36,7 @@ class TaskResponse(BaseModel):
     callback_url: Optional[str] = None
     callback_status: Optional[str] = None
     extra_data: Optional[str] = None
+    task_type: Optional[str] = None
     created_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

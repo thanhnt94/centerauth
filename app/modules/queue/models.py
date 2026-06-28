@@ -39,3 +39,14 @@ class QueuedTask(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+
+    @property
+    def task_type(self) -> str:
+        if self.extra_data:
+            import json
+            try:
+                data = json.loads(self.extra_data)
+                return data.get("task_type", "ai-explain")
+            except Exception:
+                pass
+        return "ai-explain"

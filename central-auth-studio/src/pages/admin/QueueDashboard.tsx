@@ -16,6 +16,7 @@ interface TaskItem {
   attempts: number;
   callback_url?: string;
   callback_status?: 'sent' | 'failed' | null;
+  task_type?: 'ai-explain' | 'tts';
   created_at: string;
   processed_at?: string;
   completed_at?: string;
@@ -39,6 +40,7 @@ export const QueueDashboard: React.FC = () => {
   // Filters & Pagination
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
+  const [taskTypeFilter, setTaskTypeFilter] = useState<string>('');
   const [searchPrompt, setSearchPrompt] = useState<string>('');
   const [limit] = useState(25);
   const [offset, setOffset] = useState(0);
@@ -69,6 +71,7 @@ export const QueueDashboard: React.FC = () => {
       let url = `/api/queue/list?limit=${limit}&offset=${offset}`;
       if (statusFilter) url += `&status=${statusFilter}`;
       if (sourceFilter) url += `&satellite_source=${sourceFilter}`;
+      if (taskTypeFilter) url += `&task_type=${taskTypeFilter}`;
       
       const res = await fetch(url, { headers });
       if (res.ok) {
@@ -102,7 +105,7 @@ export const QueueDashboard: React.FC = () => {
       fetchTasks();
     }, 5000);
     return () => clearInterval(interval);
-  }, [statusFilter, sourceFilter, offset, searchPrompt]);
+  }, [statusFilter, sourceFilter, taskTypeFilter, offset, searchPrompt]);
 
   const handleCancelTask = async (taskId: string) => {
     if (!confirm('Are you sure you want to remove this task from the queue?')) return;
@@ -294,6 +297,17 @@ export const QueueDashboard: React.FC = () => {
             <option value="vocaburn">Vocaburn</option>
             <option value="grammardata">GrammarData</option>
           </select>
+
+          {/* Task Type Filter */}
+          <select
+            value={taskTypeFilter}
+            onChange={(e) => { setTaskTypeFilter(e.target.value); setOffset(0); }}
+            className="bg-slate-900 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white outline-none focus:border-indigo-500 transition-all"
+          >
+            <option value="">All Types</option>
+            <option value="ai">AI Text</option>
+            <option value="tts">TTS Audio</option>
+          </select>
         </div>
 
         <div className="flex gap-3">
@@ -349,11 +363,20 @@ export const QueueDashboard: React.FC = () => {
                       <p className="text-xs font-bold text-white max-w-[150px] truncate" title={task.id}>
                         {task.id.substring(0, 8)}...
                       </p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/10">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-[8px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/10">
                           {task.satellite_source}
                         </span>
-                        <span className="text-[9px] text-slate-500 font-bold">
+                        {task.task_type === 'tts' ? (
+                          <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/10 flex items-center gap-0.5">
+                            <Volume2 size={8} /> TTS
+                          </span>
+                        ) : (
+                          <span className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/10 flex items-center gap-0.5">
+                            <FileText size={8} /> AI
+                          </span>
+                        )}
+                        <span className="text-[8px] text-slate-500 font-bold ml-1">
                           {new Date(task.created_at).toLocaleTimeString()}
                         </span>
                       </div>

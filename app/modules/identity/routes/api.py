@@ -152,6 +152,7 @@ async def jump_login(client_id: str, request: Request, db: AsyncSession = Depend
 
 from app.modules.queue.models import UserTelegramConfig
 from app.modules.admin.models import SystemSetting
+from sqlalchemy import select
 import secrets
 
 @router.get("/profile/telegram")

@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronRight, Key, Volume2, Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserLaunchpad } from '../../pages/UserLaunchpad';
 
 interface ShellProps {
@@ -14,6 +14,7 @@ interface ShellProps {
 }
 
 export const Shell: React.FC<ShellProps> = ({ children }) => {
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
@@ -278,7 +279,10 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
               <Bell size={20} />
               <div className="absolute top-2 right-2 w-2 h-2 bg-indigo-500 rounded-full border-2 border-slate-950" />
             </button>
-            <div className="flex items-center gap-4 pl-4 border-l border-white/5">
+            <div 
+              onClick={() => navigate('/settings')}
+              className="flex items-center gap-4 pl-4 border-l border-white/5 cursor-pointer hover:opacity-80 transition-all"
+            >
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-black text-white">{user?.username || 'Loading...'}</p>
                 <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{user?.role || 'User'}</p>

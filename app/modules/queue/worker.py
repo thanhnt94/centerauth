@@ -189,7 +189,9 @@ async def start_queue_worker():
     while True:
         # Check system settings for queue config
         is_paused = False
-        delay = 60
+        is_tts = False
+        delay_ai = 60
+        delay_tts = 5
         try:
             async with SessionLocal() as db:
                 from app.modules.admin.models import SystemSetting
@@ -199,10 +201,15 @@ async def start_queue_worker():
                 paused_setting = res_paused.scalar_one_or_none()
                 is_paused = (paused_setting.value == "true") if paused_setting else False
 
-                # Check rate_limit_delay
-                res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay"))
-                delay_setting = res_delay.scalar_one_or_none()
-                delay = int(delay_setting.value) if delay_setting else 60
+                # Check rate_limit_delay_ai
+                res_delay_ai = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_ai"))
+                delay_setting_ai = res_delay_ai.scalar_one_or_none()
+                delay_ai = int(delay_setting_ai.value) if delay_setting_ai else 60
+
+                # Check rate_limit_delay_tts
+                res_delay_tts = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_tts"))
+                delay_setting_tts = res_delay_tts.scalar_one_or_none()
+                delay_tts = int(delay_setting_tts.value) if delay_setting_tts else 5
         except Exception as db_err:
             logger.warning(f"[QueueWorker] Failed to query system_settings: {db_err}")
 
@@ -225,7 +232,7 @@ async def start_queue_worker():
 
                 if not task:
                     # Nothing to do — sleep and retry
-                    await asyncio.sleep(delay)
+                    await asyncio.sleep(2)
                     continue
 
                 # --------------------------------------------------
@@ -394,5 +401,6 @@ async def start_queue_worker():
         except Exception as loop_err:
             logger.error(f"[QueueWorker] Unexpected loop error: {loop_err}", exc_info=True)
 
-        # Rate-limit sleep using configured delay interval
-        await asyncio.sleep(delay)
+        # Rate-limit sleep using configured delay interval based on task type
+        current_delay = delay_tts if is_tts else delay_ai
+        await asyncio.sleep(current_delay)

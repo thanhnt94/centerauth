@@ -251,14 +251,20 @@ async def get_queue_settings(
     paused_setting = res_paused.scalar_one_or_none()
     is_paused = (paused_setting.value == "true") if paused_setting else False
 
-    # Query rate_limit_delay
-    res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay"))
-    delay_setting = res_delay.scalar_one_or_none()
-    rate_limit_delay = int(delay_setting.value) if delay_setting else 60
+    # Query rate_limit_delay_ai
+    res_delay_ai = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_ai"))
+    delay_setting_ai = res_delay_ai.scalar_one_or_none()
+    rate_limit_delay_ai = int(delay_setting_ai.value) if delay_setting_ai else 60
+
+    # Query rate_limit_delay_tts
+    res_delay_tts = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_tts"))
+    delay_setting_tts = res_delay_tts.scalar_one_or_none()
+    rate_limit_delay_tts = int(delay_setting_tts.value) if delay_setting_tts else 5
 
     return {
         "is_paused": is_paused,
-        "rate_limit_delay": rate_limit_delay
+        "rate_limit_delay_ai": rate_limit_delay_ai,
+        "rate_limit_delay_tts": rate_limit_delay_tts
     }
 
 @router.post("/settings")
@@ -278,17 +284,29 @@ async def update_queue_settings(
         else:
             db.add(SystemSetting(key="queue_is_paused", value=is_paused_str, description="Is background task queue paused", category="Queue"))
             
-    if "rate_limit_delay" in data:
+    if "rate_limit_delay_ai" in data:
         try:
-            delay_val = max(1, int(data["rate_limit_delay"]))
-            res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay"))
+            delay_val = max(1, int(data["rate_limit_delay_ai"]))
+            res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_ai"))
             delay_setting = res_delay.scalar_one_or_none()
             if delay_setting:
                 delay_setting.value = str(delay_val)
             else:
-                db.add(SystemSetting(key="queue_rate_limit_delay", value=str(delay_val), description="Delay interval between queue tasks", category="Queue"))
+                db.add(SystemSetting(key="queue_rate_limit_delay_ai", value=str(delay_val), description="Delay interval between AI text tasks", category="Queue"))
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid rate_limit_delay")
+            raise HTTPException(status_code=400, detail="Invalid rate_limit_delay_ai")
+
+    if "rate_limit_delay_tts" in data:
+        try:
+            delay_val = max(1, int(data["rate_limit_delay_tts"]))
+            res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_tts"))
+            delay_setting = res_delay.scalar_one_or_none()
+            if delay_setting:
+                delay_setting.value = str(delay_val)
+            else:
+                db.add(SystemSetting(key="queue_rate_limit_delay_tts", value=str(delay_val), description="Delay interval between TTS tasks", category="Queue"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid rate_limit_delay_tts")
             
     await db.commit()
     return await get_queue_settings(db, _auth)

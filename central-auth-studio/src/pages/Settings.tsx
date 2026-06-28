@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Key, Camera, CheckCircle2, Shield, Mail } from 'lucide-react';
+import { User, Key, Camera, CheckCircle2, Shield, Mail, Send, ExternalLink, MessageCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const Settings: React.FC = () => {
@@ -10,6 +10,21 @@ export const Settings: React.FC = () => {
     const [newPassword, setNewPassword] = useState('');
     const [message, setMessage] = useState({ type: '', text: '' });
     const [loading, setLoading] = useState(false);
+    
+    // Telegram Integration State
+    const [tgConfig, setTgConfig] = useState<any>(null);
+
+    const fetchTgConfig = async () => {
+        try {
+            const r = await fetch('/api/auth/profile/telegram');
+            if (r.ok) {
+                const data = await r.json();
+                setTgConfig(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch telegram config:', err);
+        }
+    };
 
     useEffect(() => {
         fetch('/api/profile/me')
@@ -19,7 +34,39 @@ export const Settings: React.FC = () => {
                 setFullName(data.full_name || '');
                 setEmail(data.email || '');
             });
+        fetchTgConfig();
     }, []);
+
+    const handleToggleTgSetting = async (field: string, val: any) => {
+        try {
+            const res = await fetch('/api/auth/profile/telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [field]: val })
+            });
+            if (res.ok) {
+                setTgConfig((prev: any) => prev ? { ...prev, [field]: val } : null);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleUnlinkTg = async () => {
+        if (!confirm('Bạn có chắc chắn muốn hủy liên kết Telegram?')) return;
+        try {
+            const res = await fetch('/api/auth/profile/telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unlink: true })
+            });
+            if (res.ok) {
+                fetchTgConfig();
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     const handleUpdateProfile = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -122,6 +169,92 @@ export const Settings: React.FC = () => {
                             <span className="text-xs font-medium truncate">{userData.email}</span>
                         </div>
                     </div>
+
+                    {/* Telegram Integration Card */}
+                    {tgConfig && (
+                        <div className="glass-card p-6 space-y-6">
+                            <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                                <MessageCircle className="text-sky-400" size={20} />
+                                <div>
+                                    <h4 className="text-sm font-black text-white uppercase tracking-wider">Telegram Link</h4>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Central Notification Bot</p>
+                                </div>
+                            </div>
+
+                            {tgConfig.is_linked ? (
+                                <div className="space-y-4">
+                                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex items-center gap-3">
+                                        <CheckCircle2 className="text-emerald-400 shrink-0" size={16} />
+                                        <span className="text-xs font-bold text-emerald-400">Connected to Telegram</span>
+                                    </div>
+                                    
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex items-center justify-between text-xs text-slate-400">
+                                            <span>Mục tiêu học nhắc nhở</span>
+                                            <input 
+                                                type="text" 
+                                                value={tgConfig.reminder_time}
+                                                onChange={(e) => handleToggleTgSetting('reminder_time', e.target.value)}
+                                                className="bg-slate-950/80 border border-white/10 rounded-lg px-2 py-1 text-xs text-white w-16 text-center outline-none"
+                                            />
+                                        </div>
+                                        
+                                        <label className="flex items-center justify-between text-xs text-slate-400 cursor-pointer">
+                                            <span>Nhắc nhở học tập (Active)</span>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={tgConfig.is_active}
+                                                onChange={(e) => handleToggleTgSetting('is_active', e.target.checked)}
+                                                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                                            />
+                                        </label>
+                                        
+                                        <label className="flex items-center justify-between text-xs text-slate-400 cursor-pointer">
+                                            <span>Cảnh báo mất Streak</span>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={tgConfig.streak_guard_enabled}
+                                                onChange={(e) => handleToggleTgSetting('streak_guard_enabled', e.target.checked)}
+                                                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <button 
+                                        type="button"
+                                        onClick={handleUnlinkTg}
+                                        className="w-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-xs font-bold uppercase tracking-wider py-3 rounded-xl transition-all mt-4"
+                                    >
+                                        Hủy liên kết Bot
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 text-slate-400">
+                                    <p className="text-[11px] leading-relaxed">
+                                        Liên kết tài khoản của bạn với Telegram Bot dùng chung để nhận thông báo nhắc nhở ôn tập từ vựng, cảnh báo mất chuỗi (streak) học.
+                                    </p>
+                                    
+                                    <div className="bg-slate-950/50 border border-white/5 rounded-2xl p-4 space-y-2 text-center">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">Mã liên kết của bạn</span>
+                                        <span className="text-lg font-mono font-black text-indigo-400 tracking-wider block select-all">
+                                            {tgConfig.connect_token}
+                                        </span>
+                                    </div>
+
+                                    <a 
+                                        href={`https://t.me/${tgConfig.bot_username}?start=${tgConfig.connect_token}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full btn-primary h-12 text-xs flex justify-center items-center gap-2"
+                                    >
+                                        <Send size={14} />
+                                        Mở Telegram Link
+                                        <ExternalLink size={12} />
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Form Section */}

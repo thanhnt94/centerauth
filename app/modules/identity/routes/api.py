@@ -148,3 +148,82 @@ async def jump_login(client_id: str, request: Request, db: AsyncSession = Depend
     
     separator = "&" if "?" in redirect_uri else "?"
     return RedirectResponse(url=f"{redirect_uri}{separator}code={auth_code_str}")
+
+
+from app.modules.queue.models import UserTelegramConfig
+from app.modules.admin.models import SystemSetting
+import secrets
+
+@router.get("/profile/telegram")
+async def get_user_telegram_config(request: Request, db: AsyncSession = Depends(get_db)):
+    """Retrieve or create Telegram configuration for the logged-in user."""
+    token = request.cookies.get("session_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    payload = JWTService.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid session")
+        
+    user_id = payload["sub"]
+    
+    res = await db.execute(select(UserTelegramConfig).where(UserTelegramConfig.user_id == user_id))
+    config = res.scalar_one_or_none()
+    
+    if not config:
+        config = UserTelegramConfig(
+            user_id=user_id,
+            connect_token=secrets.token_hex(6).upper()
+        )
+        db.add(config)
+        await db.commit()
+        await db.refresh(config)
+        
+    username_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "telegram_bot_username"))
+    username_setting = username_res.scalar_one_or_none()
+    bot_username = username_setting.value.strip() if username_setting and username_setting.value else "VocaburnBot"
+    
+    return {
+        "is_linked": bool(config.telegram_chat_id),
+        "connect_token": config.connect_token,
+        "reminder_time": config.reminder_time,
+        "is_active": config.is_active,
+        "streak_guard_enabled": config.streak_guard_enabled,
+        "weekly_summary_enabled": config.weekly_summary_enabled,
+        "inactivity_alert_enabled": config.inactivity_alert_enabled,
+        "bot_username": bot_username
+    }
+
+@router.post("/profile/telegram")
+async def update_user_telegram_config(request: Request, data: dict, db: AsyncSession = Depends(get_db)):
+    """Update Telegram configuration for the logged-in user."""
+    token = request.cookies.get("session_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    payload = JWTService.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid session")
+        
+    user_id = payload["sub"]
+    
+    res = await db.execute(select(UserTelegramConfig).where(UserTelegramConfig.user_id == user_id))
+    config = res.scalar_one_or_none()
+    
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+        
+    if "reminder_time" in data:
+        config.reminder_time = data["reminder_time"]
+    if "is_active" in data:
+        config.is_active = data["is_active"]
+    if "streak_guard_enabled" in data:
+        config.streak_guard_enabled = data["streak_guard_enabled"]
+    if "weekly_summary_enabled" in data:
+        config.weekly_summary_enabled = data["weekly_summary_enabled"]
+    if "inactivity_alert_enabled" in data:
+        config.inactivity_alert_enabled = data["inactivity_alert_enabled"]
+    if data.get("unlink") is True:
+        config.telegram_chat_id = None
+        config.connect_token = secrets.token_hex(6).upper() # reset token
+        
+    await db.commit()
+    return {"status": "success"}

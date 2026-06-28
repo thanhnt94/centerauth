@@ -319,24 +319,25 @@ async def generate_sync(
     )
     from app.modules.chat.providers import get_provider, PROVIDERS
 
-    # Resolve admin user for provider credentials
+    # Resolve admin users for provider credentials
     async with SessionLocal() as auth_db:
         admin_result = await auth_db.execute(
-            select(User).where(User.is_admin == True).limit(1)
+            select(User).where(User.is_admin == True).order_by(User.id.asc())
         )
-        admin_user = admin_result.scalar_one_or_none()
+        admins = admin_result.scalars().all()
 
-    if not admin_user:
+    if not admins:
         raise HTTPException(status_code=500, detail="No admin user found for AI provider credentials.")
 
     # Resolve provider (same failover logic as queue worker)
-    admin_default = getattr(admin_user, "active_provider", "google") or "google"
+    primary_admin = admins[0]
+    admin_default = getattr(primary_admin, "active_provider", "google") or "google"
     candidates = [admin_default] + [p for p in PROVIDERS.keys() if p != admin_default]
 
     provider = None
     provider_name = None
     for pname in candidates:
-        config = _get_admin_provider_config(admin_user, pname)
+        config = _get_admin_provider_config(admins, pname)
         if not config:
             continue
         try:

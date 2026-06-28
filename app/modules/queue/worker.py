@@ -19,21 +19,35 @@ logger = logging.getLogger(__name__)
 # Provider key resolution helpers
 # -------------------------------------------------------------------
 
-def _get_admin_provider_config(admin_user, provider_name: str) -> dict:
+def _get_admin_provider_config(admins, provider_name: str) -> dict:
     """
-    Extract API key and model from the admin user record for a given provider.
-    Returns {"api_key": ..., "model": ...} or empty dict if not configured.
+    Extract API key and model from the active key configurations or fallback fields.
+    Searches both custom keys inside api_keys_json and individual columns across all admins.
     """
+    import json
+    # 1. Search custom keys first
+    for admin in admins:
+        try:
+            keys = json.loads(admin.api_keys_json or "[]")
+            for k in keys:
+                if k.get("provider") == provider_name and k.get("api_key"):
+                    return {"api_key": k.get("api_key"), "model": k.get("model") or ""}
+        except Exception:
+            pass
+
+    # 2. Fall back to individual columns on the admins
     key_col = f"{provider_name}_api_key"
     model_col = f"{provider_name}_model"
-    api_key = getattr(admin_user, key_col, None) or ""
-    model_id = getattr(admin_user, model_col, None) or ""
-    if api_key:
-        return {"api_key": api_key, "model": model_id}
+    for admin in admins:
+        api_key = getattr(admin, key_col, None) or ""
+        model_id = getattr(admin, model_col, None) or ""
+        if api_key:
+            return {"api_key": api_key, "model": model_id}
+            
     return {}
 
 
-async def _resolve_provider(task: QueuedTask, admin_user) -> tuple:
+async def _resolve_provider(task: QueuedTask, admins: list) -> tuple:
     """
     Resolve which provider to use for a task, implementing failover logic.
     
@@ -58,7 +72,8 @@ async def _resolve_provider(task: QueuedTask, admin_user) -> tuple:
         candidates.append(task.provider)
 
     # 3. Append admin default if not already in list
-    admin_default = getattr(admin_user, "active_provider", "google") or "google"
+    primary_admin = admins[0] if admins else None
+    admin_default = getattr(primary_admin, "active_provider", "google") or "google" if primary_admin else "google"
     if admin_default not in candidates:
         candidates.append(admin_default)
 
@@ -69,7 +84,7 @@ async def _resolve_provider(task: QueuedTask, admin_user) -> tuple:
 
     # Try each candidate
     for provider_name in candidates:
-        config = _get_admin_provider_config(admin_user, provider_name)
+        config = _get_admin_provider_config(admins, provider_name)
         if not config:
             continue
         try:
@@ -306,11 +321,11 @@ async def start_queue_worker():
                     from app.modules.identity.models import User
                     async with SessionLocal() as auth_db:
                         admin_result = await auth_db.execute(
-                            select(User).where(User.is_admin == True).limit(1)
+                            select(User).where(User.is_admin == True).order_by(User.id.asc())
                         )
-                        admin_user = admin_result.scalar_one_or_none()
+                        admins = admin_result.scalars().all()
 
-                    if not admin_user:
+                    if not admins:
                         task.status = "failed"
                         task.error = "No admin user found — cannot resolve AI provider credentials."
                         task.completed_at = datetime.utcnow()
@@ -318,7 +333,7 @@ async def start_queue_worker():
                         await asyncio.sleep(delay)
                         continue
 
-                    provider, provider_name = await _resolve_provider(task, admin_user)
+                    provider, provider_name = await _resolve_provider(task, admins)
 
                     if not provider:
                         task.status = "failed"

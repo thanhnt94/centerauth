@@ -156,6 +156,21 @@ async def start_queue_worker():
     """
     logger.info(f"[QueueWorker] Started — polling based on database configurations")
 
+    # Reset any stuck 'processing' tasks back to 'pending' on worker startup/restart
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(
+                select(QueuedTask).where(QueuedTask.status == "processing")
+            )
+            stuck_tasks = result.scalars().all()
+            if stuck_tasks:
+                logger.info(f"[QueueWorker] Resetting {len(stuck_tasks)} stuck 'processing' tasks back to 'pending'.")
+                for t in stuck_tasks:
+                    t.status = "pending"
+                await db.commit()
+    except Exception as startup_err:
+        logger.error(f"[QueueWorker] Failed to reset stuck 'processing' tasks on startup: {startup_err}")
+
     while True:
         # Check system settings for queue config
         is_paused = False

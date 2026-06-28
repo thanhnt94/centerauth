@@ -292,3 +292,75 @@ async def update_queue_settings(
             
     await db.commit()
     return await get_queue_settings(db, _auth)
+
+
+# -------------------------------------------------------------------
+# Synchronous generation (bypass queue, instant response)
+# -------------------------------------------------------------------
+
+@router.post("/generate-sync")
+async def generate_sync(
+    body: dict,
+    _auth: bool = Depends(verify_queue_token),
+):
+    """
+    Synchronous AI text generation endpoint.
+    Satellites call this for immediate (non-queued) AI responses.
+    The prompt is processed directly and the result is returned in the response body.
+    """
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Missing prompt")
+
+    from app.core.db import SessionLocal
+    from app.modules.identity.models import User
+    from app.modules.queue.worker import (
+        _get_admin_provider_config, _generate_text_full
+    )
+    from app.modules.chat.providers import get_provider, PROVIDERS
+
+    # Resolve admin user for provider credentials
+    async with SessionLocal() as auth_db:
+        admin_result = await auth_db.execute(
+            select(User).where(User.is_admin == True).limit(1)
+        )
+        admin_user = admin_result.scalar_one_or_none()
+
+    if not admin_user:
+        raise HTTPException(status_code=500, detail="No admin user found for AI provider credentials.")
+
+    # Resolve provider (same failover logic as queue worker)
+    admin_default = getattr(admin_user, "active_provider", "google") or "google"
+    candidates = [admin_default] + [p for p in PROVIDERS.keys() if p != admin_default]
+
+    provider = None
+    provider_name = None
+    for pname in candidates:
+        config = _get_admin_provider_config(admin_user, pname)
+        if not config:
+            continue
+        try:
+            provider = get_provider(pname, api_key=config["api_key"], model_id=config.get("model"))
+            provider_name = pname
+            break
+        except Exception:
+            continue
+
+    if not provider:
+        raise HTTPException(status_code=500, detail="All AI providers exhausted — no valid API key found.")
+
+    try:
+        response_text = await _generate_text_full(provider, prompt)
+
+        # Check for inline error messages from providers
+        if response_text.strip().startswith("[") and "Error" in response_text:
+            raise Exception(response_text)
+
+        return {
+            "status": "completed",
+            "result": response_text,
+            "provider": provider_name,
+        }
+    except Exception as gen_err:
+        logger.error(f"[GenerateSync] Generation failed: {gen_err}")
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(gen_err)[:500]}")

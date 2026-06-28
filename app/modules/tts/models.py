@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Text
 from datetime import datetime
-from app.core.db_aichat import Base
+from app.core.db import Base
 
 class TTSCache(Base):
     __tablename__ = "tts_caches"

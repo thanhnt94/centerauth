@@ -18,6 +18,8 @@ from app.modules.admin.models import SystemSetting, AuditLog, AIFailoverModel
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Create tables on startup for CentralAuth DB
+    from app.modules.queue.models import QueuedTask
+    from app.modules.tts.models import TTSCache
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
@@ -65,7 +67,6 @@ async def lifespan(app: FastAPI):
             print(f"[MIGRATION ERROR] Failed to migrate users table: {migration_error}")
             
     # 2. Create tables for AIChat DB
-    from app.modules.tts.models import TTSCache
     async with aichat_engine.begin() as conn:
         await conn.run_sync(AIChatBase.metadata.create_all)
         print("[AICHAT] Database tables initialized.")

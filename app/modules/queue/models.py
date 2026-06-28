@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Text, DateTime, Integer
 from datetime import datetime
-from app.core.db_aichat import Base
+from app.core.db import Base
 
 
 class QueuedTask(Base):

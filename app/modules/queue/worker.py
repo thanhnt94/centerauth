@@ -6,8 +6,7 @@ import os
 from datetime import datetime
 from sqlalchemy import select, func
 
-from app.core.db_aichat import SessionLocal
-from app.core.db import SessionLocal as CentralAuthSessionLocal
+from app.core.db import SessionLocal
 from app.core.config import settings
 from app.modules.queue.models import QueuedTask
 from app.modules.chat.providers import get_provider, PROVIDERS
@@ -162,7 +161,7 @@ async def start_queue_worker():
         is_paused = False
         delay = 60
         try:
-            async with CentralAuthSessionLocal() as db:
+            async with SessionLocal() as db:
                 from app.modules.admin.models import SystemSetting
                 
                 # Check is_paused
@@ -254,22 +253,30 @@ async def start_queue_worker():
                             if not success:
                                 raise Exception("Failed to synthesize TTS")
                                 
-                            # Save to TTSCache database table
-                            if not cache_item:
-                                cache_item = TTSCache(
-                                    prompt_hash=prompt_hash,
-                                    text=task.prompt,
-                                    file_path=physical_path
-                                )
-                                db.add(cache_item)
-                            else:
-                                cache_item.file_path = physical_path
-                            await db.flush()
+                            # Save to TTSCache database table with collision handling
+                            try:
+                                if not cache_item:
+                                    cache_item = TTSCache(
+                                        prompt_hash=prompt_hash,
+                                        text=task.prompt,
+                                        file_path=physical_path
+                                    )
+                                    db.add(cache_item)
+                                else:
+                                    cache_item.file_path = physical_path
+                                await db.flush()
+                            except Exception as cache_db_err:
+                                # In case of concurrent insert IntegrityError collision, rollback and re-fetch task object
+                                await db.rollback()
+                                logger.warning(f"[QueueWorker] TTS cache DB collision for task {task.id} (likely inserted concurrently): {cache_db_err}")
+                                # Re-bind task instance to the new session transaction
+                                task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task.id))
+                                task = task_res.scalar_one()
                             
                             task.status = "completed"
                             task.result = f"/static/uploads/tts/{filename}"
                             task.completed_at = datetime.utcnow()
-                            logger.info(f"[QueueWorker] TTS Task {task.id} completed successfully and saved to DB cache.")
+                            logger.info(f"[QueueWorker] TTS Task {task.id} completed successfully.")
                     except Exception as tts_err:
                         logger.error(f"[QueueWorker] TTS generation failed for task {task.id}: {tts_err}")
                         if task.attempts < task.max_retries:
@@ -282,7 +289,7 @@ async def start_queue_worker():
                 else:
                     # Normal Text Generation task
                     from app.modules.identity.models import User
-                    async with CentralAuthSessionLocal() as auth_db:
+                    async with SessionLocal() as auth_db:
                         admin_result = await auth_db.execute(
                             select(User).where(User.is_admin == True).limit(1)
                         )

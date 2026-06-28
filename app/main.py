@@ -100,6 +100,22 @@ async def lifespan(app: FastAPI):
             db.add_all(defaults)
             await db.commit()
             print("[SEED] Default system settings created.")
+
+        # Ensure Telegram settings are seeded
+        tg_settings = [
+            ("telegram_bot_token", "", "Centralized Telegram Bot API Token", "Telegram"),
+            ("telegram_bot_username", "VocaburnBot", "Centralized Telegram Bot Username", "Telegram"),
+            ("telegram_reminders_enabled", "true", "Enable Telegram reminders globally", "Telegram")
+        ]
+        settings_added = False
+        for tg_key, tg_val, tg_desc, tg_cat in tg_settings:
+            key_res = await db.execute(select(SystemSetting).where(SystemSetting.key == tg_key))
+            if not key_res.scalar_one_or_none():
+                db.add(SystemSetting(key=tg_key, value=tg_val, description=tg_desc, category=tg_cat))
+                settings_added = True
+        if settings_added:
+            await db.commit()
+            print("[SEED] Telegram system settings initialized.")
             
     # 4. Start background queue worker
     worker_task = asyncio.create_task(start_queue_worker())

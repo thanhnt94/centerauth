@@ -295,6 +295,13 @@ async def start_ai_queue_worker():
                     task.completed_at = datetime.utcnow()
                 except Exception as gen_err:
                     logger.error(f"[QueueWorker-AI] Generation failed: {gen_err}")
+                    try:
+                        task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
+                        task = task_res.scalar_one()
+                    except Exception as reload_err:
+                        logger.error(f"[QueueWorker-AI] Failed to reload task {task_id}: {reload_err}")
+                        continue
+                        
                     if task_attempts < task_max_retries:
                         task.status = "pending"
                         task.error = f"Attempt {task_attempts} failed: {str(gen_err)[:500]}"
@@ -440,6 +447,13 @@ async def start_tts_queue_worker():
                         logger.info(f"[QueueWorker-TTS] TTS Task {task.id} completed successfully.")
                 except Exception as tts_err:
                     logger.error(f"[QueueWorker-TTS] TTS generation failed: {tts_err}")
+                    try:
+                        task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
+                        task = task_res.scalar_one()
+                    except Exception as reload_err:
+                        logger.error(f"[QueueWorker-TTS] Failed to reload task {task_id}: {reload_err}")
+                        continue
+                        
                     if task_attempts < task_max_retries:
                         task.status = "pending"
                         task.error = f"Attempt {task_attempts} failed: {str(tts_err)[:500]}"

@@ -222,7 +222,7 @@ async def start_ai_queue_worker():
             continue
 
         try:
-            async with SessionLocal() as db:
+            async with SessionLocal(expire_on_commit=False) as db:
                 # Fetch oldest pending AI/Text task (extra_data is null OR task_type != tts)
                 stmt = (
                     select(QueuedTask)
@@ -242,6 +242,11 @@ async def start_ai_queue_worker():
                 if not task:
                     await asyncio.sleep(2)
                     continue
+
+                task_id = task.id
+                task_prompt = task.prompt
+                task_attempts = task.attempts + 1
+                task_max_retries = task.max_retries
 
                 task.status = "processing"
                 task.processed_at = datetime.utcnow()
@@ -290,9 +295,9 @@ async def start_ai_queue_worker():
                     task.completed_at = datetime.utcnow()
                 except Exception as gen_err:
                     logger.error(f"[QueueWorker-AI] Generation failed: {gen_err}")
-                    if task.attempts < task.max_retries:
+                    if task_attempts < task_max_retries:
                         task.status = "pending"
-                        task.error = f"Attempt {task.attempts} failed: {str(gen_err)[:500]}"
+                        task.error = f"Attempt {task_attempts} failed: {str(gen_err)[:500]}"
                     else:
                         task.status = "failed"
                         task.error = f"Max retries exceeded. Last error: {str(gen_err)[:500]}"
@@ -349,7 +354,7 @@ async def start_tts_queue_worker():
             continue
 
         try:
-            async with SessionLocal() as db:
+            async with SessionLocal(expire_on_commit=False) as db:
                 # Fetch oldest pending TTS task (extra_data has task_type == tts)
                 stmt = (
                     select(QueuedTask)
@@ -369,6 +374,11 @@ async def start_tts_queue_worker():
                 if not task:
                     await asyncio.sleep(2)
                     continue
+
+                task_id = task.id
+                task_prompt = task.prompt
+                task_attempts = task.attempts + 1
+                task_max_retries = task.max_retries
 
                 task.status = "processing"
                 task.processed_at = datetime.utcnow()
@@ -430,9 +440,9 @@ async def start_tts_queue_worker():
                         logger.info(f"[QueueWorker-TTS] TTS Task {task.id} completed successfully.")
                 except Exception as tts_err:
                     logger.error(f"[QueueWorker-TTS] TTS generation failed: {tts_err}")
-                    if task.attempts < task.max_retries:
+                    if task_attempts < task_max_retries:
                         task.status = "pending"
-                        task.error = f"Attempt {task.attempts} failed: {str(tts_err)[:500]}"
+                        task.error = f"Attempt {task_attempts} failed: {str(tts_err)[:500]}"
                     else:
                         task.status = "failed"
                         task.error = f"Max retries exceeded. Last error: {str(tts_err)[:500]}"

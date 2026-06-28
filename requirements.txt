@@ -29,4 +29,6 @@ pydub
 # AI Integration
 google-genai
 
+python-telegram-bot
+
 

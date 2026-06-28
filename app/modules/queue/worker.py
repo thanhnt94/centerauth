@@ -247,6 +247,7 @@ async def start_queue_worker():
                 )
 
                 # Check if this is a TTS task via extra_data JSON
+                is_tts = False
                 if task.extra_data:
                     try:
                         extra = json.loads(task.extra_data)

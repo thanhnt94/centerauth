@@ -621,7 +621,7 @@ async def generate_direct(
         except Exception:
             pass
             
-        if not api_key:
+        if not api_key and not key_id.startswith("system-"):
             logger.warning(f"[FAILOVER] Key not configured for pool candidate: {candidate.key_label} ({provider})")
             continue
             

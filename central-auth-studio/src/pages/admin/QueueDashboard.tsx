@@ -37,6 +37,12 @@ export const QueueDashboard: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewingResult, setViewingResult] = useState<string | null>(null);
   
+  // Clear Queue Modal States
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [clearTarget, setClearTarget] = useState<'unrun' | 'logs' | 'all'>('unrun');
+  const [clearTaskType, setClearTaskType] = useState<string>('');
+  const [clearSource, setClearSource] = useState<string>('');
+  
   // Filters & Pagination
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
@@ -130,17 +136,15 @@ export const QueueDashboard: React.FC = () => {
   };
 
   const handleClearQueue = async () => {
-    let confirmMsg = 'Are you sure you want to clear the entire task queue?';
-    if (statusFilter) {
-      confirmMsg = `Are you sure you want to clear only the ${statusFilter} tasks?`;
-    }
-    if (!confirm(confirmMsg)) return;
-    
+    setIsClearModalOpen(false);
     setLoading(true);
     try {
-      let url = '/api/queue/clear';
-      if (statusFilter) {
-        url += `?status=${statusFilter}`;
+      let url = `/api/queue/clear?target=${clearTarget}`;
+      if (clearTaskType) {
+        url += `&task_type=${clearTaskType}`;
+      }
+      if (clearSource) {
+        url += `&satellite_source=${clearSource}`;
       }
       const res = await fetch(url, {
         method: 'DELETE',
@@ -312,7 +316,7 @@ export const QueueDashboard: React.FC = () => {
 
         <div className="flex gap-3">
           <button 
-            onClick={handleClearQueue}
+            onClick={() => setIsClearModalOpen(true)}
             className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-xl text-rose-400 transition-all active:scale-95"
           >
             <Trash2 size={14} /> Clear Queue
@@ -522,6 +526,122 @@ export const QueueDashboard: React.FC = () => {
             </div>
             <div className="overflow-y-auto flex-1 bg-slate-900/60 p-6 rounded-xl border border-white/5 text-sm text-slate-300 font-medium whitespace-pre-wrap font-sans max-h-[50vh]">
               {viewingResult}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Queue Modal */}
+      {isClearModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass max-w-md w-full p-8 rounded-[2rem] border border-white/10 flex flex-col animate-fade-in space-y-6">
+            <div>
+              <h3 className="text-xl font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <Trash2 className="text-rose-500" size={20} />
+                DỌN DẸP HÀNG ĐỢI
+              </h3>
+              <p className="text-slate-400 text-xs mt-1">Cấu hình bộ lọc nâng cao để xóa các mục trong hàng đợi.</p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Target Type */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Đối tượng xóa</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setClearTarget('unrun')}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
+                      clearTarget === 'unrun'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                        : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
+                    }`}
+                  >
+                    Chưa chạy (Pending)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClearTarget('logs')}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
+                      clearTarget === 'logs'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                        : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
+                    }`}
+                  >
+                    Nhật ký cũ (Logs)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClearTarget('all')}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
+                      clearTarget === 'all'
+                        ? 'bg-rose-500/20 border-rose-500/50 text-rose-300'
+                        : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
+                    }`}
+                  >
+                    Tất cả (All)
+                  </button>
+                </div>
+              </div>
+
+              {/* Task Type */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Loại tác vụ</label>
+                <select
+                  value={clearTaskType}
+                  onChange={(e) => setClearTaskType(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white outline-none focus:border-indigo-500 transition-all"
+                >
+                  <option value="">Tất cả loại (All)</option>
+                  <option value="ai">AI Text</option>
+                  <option value="tts">TTS Audio</option>
+                </select>
+              </div>
+
+              {/* Source Filter */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Nguồn gửi (Satellite Source)</label>
+                <select
+                  value={clearSource}
+                  onChange={(e) => setClearSource(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white outline-none focus:border-indigo-500 transition-all"
+                >
+                  <option value="">Tất cả nguồn (All)</option>
+                  <option value="vocaburn">Vocaburn</option>
+                  <option value="grammardata">GrammarData</option>
+                  <option value="quizmind">QuizMind</option>
+                  <option value="podlearn">PodLearn</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Warning description */}
+            <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/10 text-[11px] text-rose-400 leading-relaxed font-sans">
+              <strong>Lưu ý:</strong> {
+                clearTarget === 'unrun' 
+                  ? 'Hành động này sẽ hủy tất cả các tác vụ đang chờ xử lý khớp với bộ lọc trên. Nhật ký đã xử lý sẽ KHÔNG bị ảnh hưởng.' 
+                  : clearTarget === 'logs'
+                  ? 'Hành động này sẽ xóa nhật ký cũ (thành công/thất bại) khớp với bộ lọc trên để giải phóng dung lượng. Các tác vụ chưa chạy sẽ KHÔNG bị ảnh hưởng.'
+                  : 'CẢNH BÁO: Hành động này sẽ xóa sạch cả các tác vụ đang chờ xử lý và nhật ký cũ khớp với bộ lọc trên.'
+              }
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setIsClearModalOpen(false)}
+                className="bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider py-2.5 px-4 rounded-xl text-slate-300 transition-all"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleClearQueue}
+                className="bg-rose-500 hover:bg-rose-600 text-xs font-bold uppercase tracking-wider py-2.5 px-5 rounded-xl text-white transition-all active:scale-95"
+              >
+                Xác nhận xóa
+              </button>
             </div>
           </div>
         </div>

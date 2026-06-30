@@ -207,19 +207,40 @@ async def cancel_task(
 
 @router.delete("/clear")
 async def clear_queue(
-    status: Optional[str] = Query(None, description="Clear only tasks with this status"),
+    target: str = Query("unrun", description="unrun (pending only), logs (completed/failed), all (all tasks)"),
+    task_type: Optional[str] = Query(None, description="ai, tts"),
+    satellite_source: Optional[str] = Query(None, description="vocaburn, quizmind, podlearn, etc."),
     db: AsyncSession = Depends(get_db),
     _auth: bool = Depends(verify_queue_token),
 ):
-    """Clear tasks from the queue (all or filtered by status)."""
-    from sqlalchemy import delete
+    """Clear tasks from the queue based on target and filters."""
+    from sqlalchemy import delete, or_, not_
     stmt = delete(QueuedTask)
-    if status:
-        stmt = stmt.where(QueuedTask.status == status)
     
+    # Target filter
+    if target == "unrun":
+        stmt = stmt.where(QueuedTask.status == "pending")
+    elif target == "logs":
+        stmt = stmt.where(QueuedTask.status.in_(["completed", "failed"]))
+    elif target == "all":
+        # Delete all tasks (no status filter)
+        pass
+        
+    # Task type filter
+    if task_type:
+        if task_type.lower() == "tts":
+            stmt = stmt.where(QueuedTask.extra_data.like('%"task_type": "tts"%') | QueuedTask.extra_data.like('%"task_type":"tts"%'))
+        elif task_type.lower() == "ai":
+            stmt = stmt.where(or_(QueuedTask.extra_data.is_(None), not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) & not_(QueuedTask.extra_data.like('%"task_type":"tts"%'))))
+            
+    # Satellite source filter
+    if satellite_source:
+        stmt = stmt.where(QueuedTask.satellite_source == satellite_source)
+        
     result = await db.execute(stmt)
     await db.commit()
     return {"message": "Queue cleared successfully", "deleted_count": result.rowcount}
+
 
 
 @router.post("/retry/{task_id}", response_model=TaskResponse)

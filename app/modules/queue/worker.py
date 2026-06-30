@@ -47,58 +47,82 @@ def _get_admin_provider_config(admins, provider_name: str) -> dict:
     return {}
 
 
-async def _resolve_provider(task: QueuedTask, admins: list) -> tuple:
+async def _build_candidate_providers(task: QueuedTask, admins: list, db) -> list:
     """
-    Resolve which provider to use for a task, implementing failover logic.
-    
-    Priority order:
-      1. task.provider_priority list (JSON array of provider names)
-      2. task.provider (single preferred provider)
-      3. admin_user.active_provider (system default)
-    
-    Returns (provider_instance, provider_name) or (None, None) if all fail.
+    Build a list of candidate API configurations (provider, api_key, model_id) for a task.
+    First tries to read from AIFailoverModel (failover pool).
+    If empty, falls back to default provider resolution.
     """
+    from app.modules.admin.models import AIFailoverModel
     candidates = []
 
-    # 1. Build candidate list from priority chain
-    if task.provider_priority:
-        try:
-            candidates = json.loads(task.provider_priority)
-        except (json.JSONDecodeError, TypeError):
-            pass
+    # 1. Try to load configured failover pool items
+    try:
+        stmt = select(AIFailoverModel).where(AIFailoverModel.is_enabled == True).order_by(AIFailoverModel.priority.asc())
+        res = await db.execute(stmt)
+        items = res.scalars().all()
+        for item in items:
+            api_key = ""
+            for admin in admins:
+                try:
+                    keys = json.loads(admin.api_keys_json or "[]")
+                    for k in keys:
+                        if k.get("id") == item.key_id and k.get("api_key"):
+                            api_key = k.get("api_key")
+                            break
+                    if api_key:
+                        break
+                except Exception:
+                    pass
+            # Fallback to column-based key if key_id matches provider name or no custom key found
+            if not api_key:
+                key_col = f"{item.provider}_api_key"
+                for admin in admins:
+                    val = getattr(admin, key_col, None)
+                    if val:
+                        api_key = val
+                        break
+            
+            if api_key:
+                candidates.append({
+                    "provider_name": item.provider,
+                    "api_key": api_key,
+                    "model_id": task.model or item.model_id,
+                    "label": f"{item.provider} ({item.key_label})"
+                })
+    except Exception as e:
+        logger.error(f"[QueueWorker] Error loading failover pool from DB: {e}")
 
-    # 2. Append single preferred provider if not already in list
-    if task.provider and task.provider not in candidates:
-        candidates.append(task.provider)
+    # 2. Dynamic resolution fallback if DB failover pool is empty
+    if not candidates:
+        logger.info("[QueueWorker] No failover pool configured in DB. Falling back to dynamic resolution.")
+        pnames = []
+        if task.provider_priority:
+            try:
+                pnames = json.loads(task.provider_priority)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if task.provider and task.provider not in pnames:
+            pnames.append(task.provider)
+        primary_admin = admins[0] if admins else None
+        admin_default = getattr(primary_admin, "active_provider", "google") or "google" if primary_admin else "google"
+        if admin_default not in pnames:
+            pnames.append(admin_default)
+        for pname in PROVIDERS.keys():
+            if pname not in pnames:
+                pnames.append(pname)
+                
+        for pname in pnames:
+            config = _get_admin_provider_config(admins, pname)
+            if config:
+                candidates.append({
+                    "provider_name": pname,
+                    "api_key": config["api_key"],
+                    "model_id": task.model or config.get("model") or "",
+                    "label": pname
+                })
 
-    # 3. Append admin default if not already in list
-    primary_admin = admins[0] if admins else None
-    admin_default = getattr(primary_admin, "active_provider", "google") or "google" if primary_admin else "google"
-    if admin_default not in candidates:
-        candidates.append(admin_default)
-
-    # 4. Add all remaining configured providers as ultimate fallback
-    for pname in PROVIDERS.keys():
-        if pname not in candidates:
-            candidates.append(pname)
-
-    # Try each candidate
-    for provider_name in candidates:
-        config = _get_admin_provider_config(admins, provider_name)
-        if not config:
-            continue
-        try:
-            provider = get_provider(
-                provider_name,
-                api_key=config["api_key"],
-                model_id=task.model or config.get("model")
-            )
-            return provider, provider_name
-        except Exception as e:
-            logger.warning(f"[QueueWorker] Failed to init provider '{provider_name}': {e}")
-            continue
-
-    return None, None
+    return candidates
 
 
 # -------------------------------------------------------------------
@@ -273,28 +297,52 @@ async def start_ai_queue_worker():
                     await db.commit()
                     continue
 
-                provider, provider_name = await _resolve_provider(task, admins)
+                candidates = await _build_candidate_providers(task, admins, db)
 
-                if not provider:
+                if not candidates:
                     task.status = "failed"
-                    task.error = "All AI providers exhausted — no valid API key found."
+                    task.error = "No AI providers configured — no valid API key found."
                     task.completed_at = datetime.utcnow()
                     await db.commit()
                     await _send_callback(task)
                     await db.commit()
                     continue
 
-                try:
-                    response_text = await _generate_text_full(provider, task.prompt)
-                    if response_text.strip().startswith("[") and "Error" in response_text:
-                        raise Exception(response_text)
+                response_text = None
+                success_provider_name = None
+                errors_accumulated = []
 
+                for candidate in candidates:
+                    pname = candidate["provider_name"]
+                    pkey = candidate["api_key"]
+                    pmodel = candidate["model_id"]
+                    plabel = candidate["label"]
+                    try:
+                        logger.info(f"[QueueWorker-AI] Trying provider '{plabel}' with model '{pmodel}' for task {task_id}")
+                        provider = get_provider(pname, api_key=pkey, model_id=pmodel)
+                        
+                        res_val = await _generate_text_full(provider, task_prompt)
+                        if res_val.strip().startswith("[") and "Error" in res_val:
+                            raise Exception(res_val)
+
+                        response_text = res_val
+                        success_provider_name = pname
+                        logger.info(f"[QueueWorker-AI] Successfully generated text using provider '{plabel}' for task {task_id}")
+                        break
+                    except Exception as gen_err:
+                        err_msg = f"Provider '{plabel}' ({pmodel}) failed: {gen_err}"
+                        logger.error(f"[QueueWorker-AI] {err_msg}")
+                        errors_accumulated.append(err_msg)
+                        continue
+
+                if response_text is not None:
                     task.status = "completed"
                     task.result = response_text
-                    task.provider = provider_name
+                    task.provider = success_provider_name
                     task.completed_at = datetime.utcnow()
-                except Exception as gen_err:
-                    logger.error(f"[QueueWorker-AI] Generation failed: {gen_err}")
+                else:
+                    all_errors = " | ".join(errors_accumulated)
+                    logger.error(f"[QueueWorker-AI] All candidates failed for task {task_id}. Errors: {all_errors}")
                     try:
                         task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
                         task = task_res.scalar_one()
@@ -304,10 +352,10 @@ async def start_ai_queue_worker():
                         
                     if task_attempts < task_max_retries:
                         task.status = "pending"
-                        task.error = f"Attempt {task_attempts} failed: {str(gen_err)[:500]}"
+                        task.error = f"Attempt {task_attempts} failed. Errors: {all_errors[:500]}"
                     else:
                         task.status = "failed"
-                        task.error = f"Max retries exceeded. Last error: {str(gen_err)[:500]}"
+                        task.error = f"Max retries exceeded. Errors: {all_errors[:500]}"
                         task.completed_at = datetime.utcnow()
 
                 try:

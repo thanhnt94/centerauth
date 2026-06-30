@@ -198,19 +198,21 @@ async def get_auth_config(db: AsyncSession = Depends(get_db)):
 
 ---
 
-### Bước 5: Cài đặt API Đăng xuất Đa hệ thống (Logout Redirect)
+### Bước 5: Cài đặt API Đăng xuất Đa hệ thống (Logout Redirect & SLO)
 
-Sửa đổi hàm logout backend của bạn để tự động trả về đường dẫn logout của CentralAuth khi SSO đang được kích hoạt:
+Sửa đổi hàm logout backend của bạn để tự động trả về đường dẫn logout của CentralAuth khi SSO đang được kích hoạt, đồng thời hỗ trợ Single Sign-Out (SLO) qua tham số `local_only`:
 
 ```python
 @router.post("/logout")
-async def logout(response: Response, db: AsyncSession = Depends(get_db)):
-    """Clear auth cookie and return SSO redirect URL if active."""
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    """Clear auth cookie and return SSO redirect URL if active and not local_only."""
     response.delete_cookie("access_token")  # Hoặc xóa session cookie local của bạn
     
+    local_only = request.query_params.get("local_only") == "1"
     config = await get_sso_config(db)
     sso_enabled = config.get("ENABLE_SSO", "true").lower() == "true"
-    if sso_enabled:
+    
+    if sso_enabled and not local_only:
         server_url = config.get("CENTRAL_AUTH_URL", "http://localhost:5000").rstrip('/')
         client_id = config.get("CENTRAL_AUTH_CLIENT_ID", "your-app-v1")
         return {
@@ -220,6 +222,7 @@ async def logout(response: Response, db: AsyncSession = Depends(get_db)):
         
     return {"status": "success", "message": "Logged out"}
 ```
+
 
 ---
 

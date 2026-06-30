@@ -113,11 +113,72 @@ async def portal_apps(db: AsyncSession = Depends(get_db)):
     return [a.to_dict() for a in apps]
 
 @router.api_route("/logout", methods=["GET", "POST"])
-async def logout(request: Request):
+async def logout(request: Request, db: AsyncSession = Depends(get_db)):
     return_to = request.query_params.get("return_to", "/")
-    res = RedirectResponse(url=return_to, status_code=303)
+    
+    from app.modules.clients.services.client_service import ClientService
+    from fastapi.responses import HTMLResponse
+    
+    clients = await ClientService.list_active_clients(db)
+    logout_urls = []
+    for client in clients:
+        if client.app_url:
+            logout_urls.append(f"{client.app_url.rstrip('/')}/logout?local_only=1")
+            
+    if logout_urls:
+        iframes = "".join([f'<iframe src="{url}" style="display:none;width:0;height:0;border:0;"></iframe>' for url in logout_urls])
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Logging out...</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    background: #0f172a;
+                    color: #f1f5f9;
+                    margin: 0;
+                }}
+                .loader {{
+                    border: 4px solid #334155;
+                    border-top: 4px solid #3b82f6;
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                    margin-bottom: 20px;
+                }}
+                @keyframes spin {{
+                    0% {{ transform: rotate(0deg); }}
+                    100% {{ transform: rotate(360deg); }}
+                }}
+            </style>
+            <script>
+                setTimeout(function() {{
+                    window.location.href = {repr(return_to)};
+                }}, 1000);
+            </script>
+        </head>
+        <body>
+            <div class="loader"></div>
+            <h3>Đang đăng xuất khỏi các ứng dụng vệ tinh...</h3>
+            {iframes}
+        </body>
+        </html>
+        """
+        res = HTMLResponse(content=html_content, status_code=200)
+    else:
+        res = RedirectResponse(url=return_to, status_code=303)
+        
     res.delete_cookie("session_token", path="/")
     return res
+
 
 @router.get("/jump/{client_id}")
 async def jump_login(client_id: str, request: Request, db: AsyncSession = Depends(get_db)):

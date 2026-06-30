@@ -55,7 +55,6 @@ async def verify_token(request: Request, db: AsyncSession = Depends(get_db)):
         "user": {
             "id": user.id,
             "username": user.username,
-            "email": user.email,
-            "password_hash": user.password_hash # Syncing for QuizMind compatibility
+            "email": user.email
         }
     }

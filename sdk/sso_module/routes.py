@@ -71,5 +71,8 @@ async def sso_callback(request: Request, response: Response, code: Optional[str]
     await db.commit()
     
     res = RedirectResponse(url="/", status_code=303)
-    res.set_cookie(key="user_id", value=str(user.id), httponly=True)
+    from .cookie_signer import sign_cookie
+    # Fallback to client_secret as key for HMAC signing in SDK template
+    signed_id = sign_cookie(str(user.id), config.client_secret)
+    res.set_cookie(key="user_id", value=signed_id, httponly=True, path="/", samesite="lax", max_age=1800)
     return res

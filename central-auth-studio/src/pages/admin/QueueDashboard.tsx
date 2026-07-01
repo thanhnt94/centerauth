@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Activity, RefreshCw, Trash2, 
-  CheckCircle, XCircle, Clock, Search, Loader2, Volume2, FileText
+  CheckCircle, XCircle, Clock, Search, Loader2, Volume2, FileText, Copy
 } from 'lucide-react';
 
 interface TaskItem {
@@ -47,10 +47,12 @@ export const QueueDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
   const [taskTypeFilter, setTaskTypeFilter] = useState<string>('');
+  const [providerFilter, setProviderFilter] = useState<string>('');
   const [searchPrompt, setSearchPrompt] = useState<string>('');
   const [limit] = useState(25);
   const [offset, setOffset] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
 
   // Authentication header token (falls back to system config)
   const queueToken = 'super-secret-token-123';
@@ -78,6 +80,7 @@ export const QueueDashboard: React.FC = () => {
       if (statusFilter) url += `&status=${statusFilter}`;
       if (sourceFilter) url += `&satellite_source=${sourceFilter}`;
       if (taskTypeFilter) url += `&task_type=${taskTypeFilter}`;
+      if (providerFilter) url += `&provider=${providerFilter}`;
       
       const res = await fetch(url, { headers });
       if (res.ok) {
@@ -111,7 +114,15 @@ export const QueueDashboard: React.FC = () => {
       fetchTasks();
     }, 5000);
     return () => clearInterval(interval);
-  }, [statusFilter, sourceFilter, taskTypeFilter, offset, searchPrompt]);
+  }, [statusFilter, sourceFilter, taskTypeFilter, providerFilter, offset, searchPrompt]);
+
+  const handleCopyPrompt = (taskId: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedTaskId(taskId);
+    setTimeout(() => {
+      setCopiedTaskId(null);
+    }, 1500);
+  };
 
   const handleCancelTask = async (taskId: string) => {
     if (!confirm('Are you sure you want to remove this task from the queue?')) return;
@@ -312,6 +323,28 @@ export const QueueDashboard: React.FC = () => {
             <option value="ai">AI Text</option>
             <option value="tts">TTS Audio</option>
           </select>
+
+          {/* Provider Filter */}
+          <select
+            value={providerFilter}
+            onChange={(e) => { setProviderFilter(e.target.value); setOffset(0); }}
+            className="bg-slate-900 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white outline-none focus:border-indigo-500 transition-all"
+          >
+            <option value="">All Providers</option>
+            <option value="google">Google</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="groq">Groq</option>
+            <option value="cerebras">Cerebras</option>
+            <option value="nvidia">NVIDIA</option>
+            <option value="sambanova">SambaNova</option>
+            <option value="mistral">Mistral</option>
+            <option value="cloudflare">Cloudflare</option>
+            <option value="github_models">GitHub Models</option>
+            <option value="cohere">Cohere</option>
+            <option value="huggingface">HuggingFace</option>
+            <option value="fireworks">Fireworks</option>
+          </select>
         </div>
 
         <div className="flex gap-3">
@@ -388,9 +421,23 @@ export const QueueDashboard: React.FC = () => {
 
                     {/* Prompt Snippet */}
                     <td className="py-6 px-8 max-w-[300px]">
-                      <p className="text-xs text-slate-300 truncate" title={task.prompt}>
-                        {task.prompt}
-                      </p>
+                      <div className="flex items-center justify-between gap-2 group">
+                        <p className="text-xs text-slate-300 truncate flex-1 font-medium" title={task.prompt}>
+                          {task.prompt}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPrompt(task.id, task.prompt)}
+                          className="p-1 rounded bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center min-w-[24px]"
+                          title="Copy prompt"
+                        >
+                          {copiedTaskId === task.id ? (
+                            <span className="text-[8px] font-bold text-emerald-400">Copied!</span>
+                          ) : (
+                            <Copy size={11} />
+                          )}
+                        </button>
+                      </div>
                       {task.error && (
                         <p className="text-[10px] text-rose-500 mt-1 truncate" title={task.error}>
                           Error: {task.error}

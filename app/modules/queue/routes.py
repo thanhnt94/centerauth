@@ -127,6 +127,7 @@ async def list_tasks(
     status: Optional[str] = Query(None, description="Filter by status: pending, processing, completed, failed"),
     satellite_source: Optional[str] = Query(None, description="Filter by satellite source"),
     task_type: Optional[str] = Query(None, description="Filter by task type: ai, tts"),
+    provider: Optional[str] = Query(None, description="Filter by AI provider"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -142,6 +143,9 @@ async def list_tasks(
     if satellite_source:
         query = query.where(QueuedTask.satellite_source == satellite_source)
         count_query = count_query.where(QueuedTask.satellite_source == satellite_source)
+    if provider:
+        query = query.where(QueuedTask.provider == provider)
+        count_query = count_query.where(QueuedTask.provider == provider)
 
     if task_type:
         from sqlalchemy import or_, not_

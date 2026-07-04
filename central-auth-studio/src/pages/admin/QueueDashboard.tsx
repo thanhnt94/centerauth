@@ -54,6 +54,16 @@ export const QueueDashboard: React.FC = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
 
+  const isImageResult = (resultText: string | null | undefined) => {
+    if (!resultText) return false;
+    const cleaned = resultText.trim().toLowerCase();
+    return cleaned.startsWith('http://') || 
+           cleaned.startsWith('https://') || 
+           cleaned.startsWith('/') ||
+           cleaned.includes('/static/uploads/images/') ||
+           cleaned.match(/\.(jpeg|jpg|gif|png|webp|svg)($|\?)/) !== null;
+  };
+
   // Authentication header token (falls back to system config)
   const queueToken = 'super-secret-token-123';
   const headers = {
@@ -501,9 +511,13 @@ export const QueueDashboard: React.FC = () => {
                           <button
                             onClick={() => setViewingResult(task.result || null)}
                             className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 p-2.5 rounded-xl transition-all"
-                            title="View Generated Result"
+                            title={task.task_type === 'image' || isImageResult(task.result) ? "View Image" : "View Generated Result"}
                           >
-                            <FileText size={14} />
+                            {task.task_type === 'image' || isImageResult(task.result) ? (
+                              <Image size={14} />
+                            ) : (
+                              <FileText size={14} />
+                            )}
                           </button>
                         )}
 
@@ -566,8 +580,17 @@ export const QueueDashboard: React.FC = () => {
           <div className="glass max-w-2xl w-full p-8 rounded-[2rem] border border-white/10 flex flex-col max-h-[85vh] animate-fade-in">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black text-white uppercase tracking-wider flex items-center gap-2">
-                <FileText className="text-indigo-400" size={20} />
-                AI Generated Result
+                {isImageResult(viewingResult) ? (
+                  <>
+                    <Image className="text-indigo-400" size={20} />
+                    Generated Image Preview
+                  </>
+                ) : (
+                  <>
+                    <FileText className="text-indigo-400" size={20} />
+                    AI Generated Result
+                  </>
+                )}
               </h3>
               <button 
                 onClick={() => setViewingResult(null)} 
@@ -576,8 +599,16 @@ export const QueueDashboard: React.FC = () => {
                 Close [X]
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 bg-slate-900/60 p-6 rounded-xl border border-white/5 text-sm text-slate-300 font-medium whitespace-pre-wrap font-sans max-h-[50vh]">
-              {viewingResult}
+            <div className="overflow-y-auto flex-1 bg-slate-900/60 p-6 rounded-xl border border-white/5 text-sm text-slate-300 font-medium whitespace-pre-wrap font-sans max-h-[50vh] flex items-center justify-center">
+              {isImageResult(viewingResult) ? (
+                <img 
+                  src={viewingResult} 
+                  alt="Generated AI Result" 
+                  className="max-w-full max-h-[40vh] object-contain rounded-xl shadow-lg border border-white/10"
+                />
+              ) : (
+                viewingResult
+              )}
             </div>
           </div>
         </div>

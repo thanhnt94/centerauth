@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/tts", tags=["TTS"])
 class TTSGenerateRequest(BaseModel):
     text: str
     lang: Optional[str] = None
+    bypass_parsing: Optional[bool] = False
 
 class TTSSettings(BaseModel):
     default_engine: str = "edge"
@@ -41,7 +42,16 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     if not text:
         raise HTTPException(status_code=400, detail="Text content cannot be empty")
         
-    prompt_hash = AudioGenerator.get_voice_hash(text)
+    lang = data.lang or "vi"
+    bypass_parsing = bool(data.bypass_parsing)
+    
+    # Calculate a unique cache hash based on text, lang, and bypass_parsing
+    import hashlib
+    if lang == "vi" and not bypass_parsing:
+        prompt_hash = AudioGenerator.get_voice_hash(text)
+    else:
+        hash_payload = f"{text}||{lang}||{bypass_parsing}"
+        prompt_hash = hashlib.md5(hash_payload.encode('utf-8')).hexdigest()
     
     # Check cache table
     res = await db.execute(select(TTSCache).where(TTSCache.prompt_hash == prompt_hash))
@@ -63,7 +73,7 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     # Generate if not exists
     if not os.path.exists(physical_path):
         try:
-            success = await AudioGenerator.generate_tts(text, physical_path, lang)
+            success = await AudioGenerator.generate_tts(text, physical_path, lang, bypass_parsing=bypass_parsing)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to synthesize TTS")
         except Exception as e:

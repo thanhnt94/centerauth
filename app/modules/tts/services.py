@@ -121,7 +121,7 @@ class AudioGenerator:
         return False
 
     @classmethod
-    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "vi") -> bool:
+    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "vi", bypass_parsing: bool = False) -> bool:
         """
         Generates premium TTS audio file using Google Cloud TTS (if configured),
         Microsoft Edge TTS as primary fallback, and Google TTS (gTTS) as secondary fallback.
@@ -153,7 +153,11 @@ class AudioGenerator:
                 except Exception:
                     pass
 
-            segments = cls.parse_segments(text, default_lang)
+            if bypass_parsing:
+                segments = [{'text': text, 'lang': default_lang}]
+            else:
+                segments = cls.parse_segments(text, default_lang)
+
             if not segments:
                 return False
                 
@@ -231,11 +235,6 @@ class AudioGenerator:
                         log_msg = f"[TTS GENERATOR] [SUCCESS GTTS] Google TTS generated successfully. Lang: '{gtts_lang}'"
                         print(log_msg)
                         logger.info(log_msg)
-                    except Exception as ge:
-                        logger.error(f"[TTS CRITICAL ERROR] Google TTS fallback also failed: {ge}")
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
-                        raise ValueError(f"All TTS engines failed for text segment '{seg_text[:20]}'")
                     except Exception as ge:
                         logger.error(f"[TTS CRITICAL ERROR] Google TTS fallback also failed: {ge}")
                         if os.path.exists(temp_path):

@@ -83,6 +83,7 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
   const [selectedEngine, setSelectedEngine] = useState('edge');
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
+  const [createMode, setCreateMode] = useState<'single' | 'batch'>('single');
   const [history, setHistory] = useState<TTSFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
@@ -196,7 +197,8 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: inputText.trim(),
-          lang: selectedLang
+          lang: createMode === 'single' ? selectedLang : 'vi',
+          bypass_parsing: createMode === 'single'
         })
       });
       if (res.ok) {
@@ -349,71 +351,106 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
 
       {activeTab === 'create' && (
         <div className="max-w-3xl mx-auto bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">
-          <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Synthesizer</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Synthesizer</h3>
+            
+            {/* Sub-mode Selection Toggles */}
+            <div className="flex bg-slate-900/60 p-1 rounded-xl border border-white/5 shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setCreateMode('single')}
+                className={`py-1.5 px-3.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  createMode === 'single'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Test Single Voice
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateMode('batch')}
+                className={`py-1.5 px-3.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  createMode === 'batch'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Test Batch Prompt
+              </button>
+            </div>
+          </div>
           
           <form onSubmit={handleSynthesize} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Engine selection */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">TTS Engine</label>
-                <select
-                  value={selectedEngine}
-                  onChange={(e) => {
-                    const newEngine = e.target.value;
-                    setSelectedEngine(newEngine);
-                    // Reset selected voice to first item of new engine list
-                    const list = newEngine === 'google' 
-                      ? GOOGLE_VOICE_OPTIONS 
-                      : newEngine === 'gtts' 
-                        ? GTTS_VOICE_OPTIONS 
-                        : EDGE_VOICE_OPTIONS;
-                    setSelectedLang(list[0].value);
-                  }}
-                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
-                >
-                  <option value="edge">Microsoft Edge TTS (Premium Neural)</option>
-                  <option value="gtts">Google Translate (gTTS Free)</option>
-                  <option value="google">Google Cloud TTS (Premium Neural2/Wavenet)</option>
-                </select>
-              </div>
-
-              {/* Voice selection */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Voice & Language</label>
-                <div className="flex gap-2">
+            {createMode === 'single' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-900/20 p-5 rounded-2xl border border-white/5">
+                {/* Engine selection */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">TTS Engine</label>
                   <select
-                    value={selectedLang}
-                    onChange={(e) => setSelectedLang(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
+                    value={selectedEngine}
+                    onChange={(e) => {
+                      const newEngine = e.target.value;
+                      setSelectedEngine(newEngine);
+                      // Reset selected voice to first item of new engine list
+                      const list = newEngine === 'google' 
+                        ? GOOGLE_VOICE_OPTIONS 
+                        : newEngine === 'gtts' 
+                          ? GTTS_VOICE_OPTIONS 
+                          : EDGE_VOICE_OPTIONS;
+                      setSelectedLang(list[0].value);
+                    }}
+                    className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white font-bold"
                   >
-                    {(selectedEngine === 'google' 
-                      ? GOOGLE_VOICE_OPTIONS 
-                      : selectedEngine === 'gtts' 
-                        ? GTTS_VOICE_OPTIONS 
-                        : EDGE_VOICE_OPTIONS).map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    <option value="edge">Microsoft Edge TTS (Premium Neural)</option>
+                    <option value="gtts">Google Translate (gTTS Free)</option>
+                    <option value="google">Google Cloud TTS (Premium Neural2/Wavenet)</option>
                   </select>
-                  <button
-                    type="button"
-                    onClick={handlePreviewVoice}
-                    disabled={isPreviewing}
-                    className="bg-indigo-650 hover:bg-indigo-600 disabled:opacity-50 text-white w-12 h-11 rounded-xl flex items-center justify-center transition-all shadow-md shadow-indigo-600/10 shrink-0 border border-indigo-550/20"
-                    title="Quick Preview Voice"
-                  >
-                    {isPreviewing ? (
-                      <Loader2 className="animate-spin text-white" size={16} />
-                    ) : playingFile === 'preview' ? (
-                      <Pause className="text-white fill-white animate-pulse" size={16} />
-                    ) : (
-                      <Play className="text-white fill-white" size={16} />
-                    )}
-                  </button>
+                </div>
+
+                {/* Voice selection */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Voice & Language</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedLang}
+                      onChange={(e) => setSelectedLang(e.target.value)}
+                      className="flex-1 bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white font-mono"
+                    >
+                      {(selectedEngine === 'google' 
+                        ? GOOGLE_VOICE_OPTIONS 
+                        : selectedEngine === 'gtts' 
+                          ? GTTS_VOICE_OPTIONS 
+                          : EDGE_VOICE_OPTIONS).map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handlePreviewVoice}
+                      disabled={isPreviewing}
+                      className="bg-indigo-655 hover:bg-indigo-600 disabled:opacity-50 text-white w-12 h-11 rounded-xl flex items-center justify-center transition-all shadow-md shadow-indigo-600/10 shrink-0 border border-indigo-550/20"
+                      title="Quick Preview Voice"
+                    >
+                      {isPreviewing ? (
+                        <Loader2 className="animate-spin text-white" size={16} />
+                      ) : playingFile === 'preview' ? (
+                        <Pause className="text-white fill-white animate-pulse" size={16} />
+                      ) : (
+                        <Play className="text-white fill-white" size={16} />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 text-xs text-slate-400 leading-relaxed">
+                <span className="font-bold text-indigo-400 block mb-1">💡 MÔ PHỎNG BATCH PROMPT</span>
+                Nội dung nhập bên dưới sẽ được tự động phân tách theo dòng (ví dụ: `ja: こんにちは` / `en: Hello`) hoặc theo thẻ brackets (ví dụ: `[ja:こんにちは][vi:xin chào]`). Bộ máy sẽ đọc dựa theo cấu hình **Mapped Voices** đã cài đặt trong tab <span className="text-indigo-300 font-bold">Settings</span>.
+              </div>
+            )}
 
             {/* Text Input */}
             <div>

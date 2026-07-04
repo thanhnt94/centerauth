@@ -175,3 +175,40 @@ async def update_media_settings(
         await db.rollback()
         logger.error(f"Failed to save media settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{asset_id}")
+async def delete_media_asset(
+    asset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete a media asset from both disk and database.
+    """
+    from app.modules.media.models import MediaAsset
+    from app.core.config import settings
+    import os
+    try:
+        res = await db.execute(select(MediaAsset).where(MediaAsset.id == asset_id))
+        asset = res.scalar_one_or_none()
+        if not asset:
+            raise HTTPException(status_code=404, detail="Media asset not found")
+            
+        # Delete file from disk
+        filepath = os.path.join(settings.UPLOAD_FOLDER, "media", asset.filename)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception as file_err:
+                logger.error(f"Failed to delete media file {filepath}: {file_err}")
+                
+        # Delete from DB
+        await db.delete(asset)
+        await db.commit()
+        return {"status": "ok", "message": "Media asset deleted successfully."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to delete media asset {asset_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

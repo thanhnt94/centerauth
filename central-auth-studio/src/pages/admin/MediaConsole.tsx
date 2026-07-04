@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Image as ImageIcon, Search, Download, Check, 
-  ExternalLink, Copy, Loader2, Database
+  ExternalLink, Copy, Loader2, Database, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -188,6 +188,22 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const deleteAsset = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this media asset?')) return;
+    try {
+      const res = await fetch(`/api/chat/media/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setLibrary(prev => prev.filter(item => item.id !== id));
+      } else {
+        const errData = await res.json();
+        alert(`Failed to delete: ${errData.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while deleting media asset');
+    }
   };
 
   const formatSize = (bytes: number) => {
@@ -409,7 +425,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
 
                       <div className="flex gap-2">
                         <button 
-                          onClick={() => copyToClipboard(asset.local_path, asset.id)}
+                          onClick={() => copyToClipboard(window.location.origin + asset.local_path, asset.id)}
                           className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
                             copiedId === asset.id 
                               ? 'bg-emerald-600 text-white' 
@@ -424,9 +440,17 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
                           target="_blank" 
                           rel="noreferrer"
                           className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"
+                          title="Open image in new tab"
                         >
                           <ExternalLink size={12} />
                         </a>
+                        <button 
+                          onClick={() => deleteAsset(asset.id)}
+                          className="p-2 bg-white/5 hover:bg-rose-600 border border-white/10 hover:border-rose-600 rounded-xl text-slate-400 hover:text-white transition-colors"
+                          title="Delete media asset"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </div>
                   </div>

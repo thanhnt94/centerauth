@@ -29,7 +29,7 @@ class AudioGenerator:
     }
 
     @staticmethod
-    def parse_segments(text: str):
+    def parse_segments(text: str, default_lang: str = "vi"):
         if not text:
             return []
             
@@ -47,7 +47,7 @@ class AudioGenerator:
             
         # Fallback to line-by-line format
         lines = text.split('\n')
-        current_lang = 'en'
+        current_lang = default_lang
         
         for line in lines:
             if not line.strip():
@@ -121,7 +121,7 @@ class AudioGenerator:
         return False
 
     @classmethod
-    async def generate_tts(cls, text: str, output_path: str) -> bool:
+    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "vi") -> bool:
         """
         Generates premium TTS audio file using Google Cloud TTS (if configured),
         Microsoft Edge TTS as primary fallback, and Google TTS (gTTS) as secondary fallback.
@@ -153,7 +153,7 @@ class AudioGenerator:
                 except Exception:
                     pass
 
-            segments = cls.parse_segments(text)
+            segments = cls.parse_segments(text, default_lang)
             if not segments:
                 return False
                 
@@ -180,13 +180,20 @@ class AudioGenerator:
                 success_segment = False
                 
                 # Look up customized voice name and engine from user settings
-                voice_data = default_voices.get(lang)
-                if isinstance(voice_data, dict):
-                    tag_engine = voice_data.get("engine", tts_engine)
-                    configured_voice = voice_data.get("voice")
+                # If lang is already a full voice string (contains 'Neural' or 'Wavenet'), use it directly!
+                is_full_voice = "Neural" in lang or "Wavenet" in lang or len(lang) > 10
+                
+                if is_full_voice:
+                    tag_engine = "google" if ("Neural2" in lang or "Wavenet" in lang) else "edge"
+                    configured_voice = lang
                 else:
-                    tag_engine = tts_engine
-                    configured_voice = voice_data # it's a string or None
+                    voice_data = default_voices.get(lang)
+                    if isinstance(voice_data, dict):
+                        tag_engine = voice_data.get("engine", tts_engine)
+                        configured_voice = voice_data.get("voice")
+                    else:
+                        tag_engine = tts_engine
+                        configured_voice = voice_data # it's a string or None
                 
                 # 1. Try Google Cloud TTS first if tag_engine is "google"
                 if tag_engine == "google" and google_key.strip():

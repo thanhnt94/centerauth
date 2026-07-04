@@ -21,7 +21,7 @@ class TTSGenerateRequest(BaseModel):
 class TTSSettings(BaseModel):
     default_engine: str = "edge"
     google_api_key: Optional[str] = ""
-    default_voices: Dict[str, str] = {
+    default_voices: Dict[str, Any] = {
         "vi": "vi-VN-HoaiMyNeural",
         "en": "en-US-AriaNeural",
         "ja": "ja-JP-NanamiNeural",
@@ -63,7 +63,7 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     # Generate if not exists
     if not os.path.exists(physical_path):
         try:
-            success = await AudioGenerator.generate_tts(text, physical_path)
+            success = await AudioGenerator.generate_tts(text, physical_path, lang)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to synthesize TTS")
         except Exception as e:

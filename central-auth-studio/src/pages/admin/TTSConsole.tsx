@@ -86,6 +86,52 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
   const [history, setHistory] = useState<TTSFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  const handlePreviewVoice = async () => {
+    if (isPreviewing) return;
+    setIsPreviewing(true);
+    
+    // Determine preview text based on language prefix of selectedLang
+    let previewText = "Xin chào, đây là bản thử nghiệm phát âm thử của giọng tiếng Việt.";
+    const lowerVal = selectedLang.toLowerCase();
+    if (lowerVal.startsWith("en") || lowerVal.startsWith("aria") || lowerVal.startsWith("guy") || lowerVal.startsWith("sonia")) {
+      previewText = "Hello! This is a quick speech preview of this English voice.";
+    } else if (lowerVal.startsWith("ja") || lowerVal.startsWith("nana") || lowerVal.startsWith("keit")) {
+      previewText = "こんにちは、この日本語音声プレビューを聞いています。";
+    } else if (lowerVal.startsWith("zh") || lowerVal.startsWith("xiao")) {
+      previewText = "您好，这是中文语音生成的试听预览。";
+    } else if (lowerVal.startsWith("ko") || lowerVal.startsWith("sunh")) {
+      previewText = "안녕하세요, 한국어 목소리를 들어보는 미리보기입니다.";
+    } else if (lowerVal.startsWith("fr") || lowerVal.startsWith("deni")) {
+      previewText = "Bonjour, ceci est un aperçu de la voix française sélectionnée.";
+    } else if (lowerVal.startsWith("de") || lowerVal.startsWith("kill")) {
+      previewText = "Hallo, dies ist eine kurze Hörprobe für die deutsche Stimme.";
+    }
+    
+    try {
+      const res = await fetch('/api/tts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: previewText,
+          lang: selectedLang
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.src = data.url;
+          audioPlayerRef.current.play().catch(e => console.log('Autoplay blocked:', e));
+          setPlayingFile('preview');
+        }
+      }
+    } catch (err) {
+      console.error('Preview failed:', err);
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
   
   // Player State
   const [playingFile, setPlayingFile] = useState<string | null>(null);
@@ -334,21 +380,38 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
               {/* Voice selection */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Voice & Language</label>
-                <select
-                  value={selectedLang}
-                  onChange={(e) => setSelectedLang(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
-                >
-                  {(selectedEngine === 'google' 
-                    ? GOOGLE_VOICE_OPTIONS 
-                    : selectedEngine === 'gtts' 
-                      ? GTTS_VOICE_OPTIONS 
-                      : EDGE_VOICE_OPTIONS).map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedLang}
+                    onChange={(e) => setSelectedLang(e.target.value)}
+                    className="flex-1 bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
+                  >
+                    {(selectedEngine === 'google' 
+                      ? GOOGLE_VOICE_OPTIONS 
+                      : selectedEngine === 'gtts' 
+                        ? GTTS_VOICE_OPTIONS 
+                        : EDGE_VOICE_OPTIONS).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handlePreviewVoice}
+                    disabled={isPreviewing}
+                    className="bg-indigo-650 hover:bg-indigo-600 disabled:opacity-50 text-white w-12 h-11 rounded-xl flex items-center justify-center transition-all shadow-md shadow-indigo-600/10 shrink-0 border border-indigo-550/20"
+                    title="Quick Preview Voice"
+                  >
+                    {isPreviewing ? (
+                      <Loader2 className="animate-spin text-white" size={16} />
+                    ) : playingFile === 'preview' ? (
+                      <Pause className="text-white fill-white animate-pulse" size={16} />
+                    ) : (
+                      <Play className="text-white fill-white" size={16} />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -363,9 +426,29 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                 className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-2xl p-6 text-sm text-white transition-all resize-none placeholder:text-slate-650"
                 maxLength={1000}
               />
-              <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1">
-                <span>Supports multi-language segments using [lang:text] brackets.</span>
-                <span>{inputText.length}/1000 chars</span>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mt-2">
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[9px] text-slate-500 font-bold uppercase mr-1">Quick Samples:</span>
+                  {[
+                    { label: "Tiếng Việt", text: "Xin chào bạn, hôm nay bạn thế nào? Chúng ta cùng học từ vựng mới nhé." },
+                    { label: "Tiếng Anh", text: "Hello! Welcome back to Vocaburn. Let's practice some flashcards." },
+                    { label: "Tiếng Nhật", text: "こんにちは！お元気ですか？今日も一緒に日本語を勉強しましょう。" },
+                    { label: "Đa Ngôn Ngữ (Brackets)", text: "[ja:人生] nghĩa là [vi:cuộc đời]. [en:life] cũng có nghĩa tương tự." },
+                    { label: "Đa Ngôn Ngữ (Dòng)", text: "ja: 人生\nvi: cuộc đời\nen: life" }
+                  ].map((sample) => (
+                    <button
+                      key={sample.label}
+                      type="button"
+                      onClick={() => setInputText(sample.text)}
+                      className="bg-white/5 hover:bg-white/10 border border-white/5 text-[9px] text-slate-400 hover:text-white font-bold py-1 px-2 rounded-lg transition-all"
+                    >
+                      {sample.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-slate-500 w-full sm:w-auto">
+                  <span>{inputText.length}/1000 chars</span>
+                </div>
               </div>
             </div>
 

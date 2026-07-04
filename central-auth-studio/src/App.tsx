@@ -37,6 +37,7 @@ const App: React.FC = () => {
               <Route path="/admin/tts-settings" element={<TTSConsole defaultTab="settings" />} />
               <Route path="/admin/image-search" element={<MediaConsole defaultTab="search" />} />
               <Route path="/admin/images" element={<MediaConsole defaultTab="library" />} />
+              <Route path="/admin/image-settings" element={<MediaConsole defaultTab="settings" />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

@@ -106,3 +106,72 @@ async def get_library(
     except Exception as e:
         logger.error(f"Failed to get media library: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class MediaSettingsUpdateRequest(BaseModel):
+    media_provider_priority: str
+    media_crop_ratio: str
+    unsplash_access_key: Optional[str] = ""
+    pexels_api_key: Optional[str] = ""
+    pixabay_api_key: Optional[str] = ""
+    google_cse_api_key: Optional[str] = ""
+    google_cse_cx: Optional[str] = ""
+
+@router.get("/settings")
+async def get_media_settings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all media configs from SystemSetting.
+    """
+    from app.modules.admin.models import SystemSetting
+    try:
+        keys = [
+            "media_provider_priority", "media_crop_ratio",
+            "unsplash_access_key", "pexels_api_key", "pixabay_api_key",
+            "google_cse_api_key", "google_cse_cx"
+        ]
+        result = await db.execute(select(SystemSetting).where(SystemSetting.key.in_(keys)))
+        settings_rows = result.scalars().all()
+        settings_dict = {s.key: s.value for s in settings_rows}
+        
+        # Defaults
+        return {
+            "media_provider_priority": settings_dict.get("media_provider_priority", "bing,wikimedia,unsplash,pexels,pixabay,google"),
+            "media_crop_ratio": settings_dict.get("media_crop_ratio", "original"),
+            "unsplash_access_key": settings_dict.get("unsplash_access_key", ""),
+            "pexels_api_key": settings_dict.get("pexels_api_key", ""),
+            "pixabay_api_key": settings_dict.get("pixabay_api_key", ""),
+            "google_cse_api_key": settings_dict.get("google_cse_api_key", ""),
+            "google_cse_cx": settings_dict.get("google_cse_cx", "")
+        }
+    except Exception as e:
+        logger.error(f"Failed to load media settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/settings")
+async def update_media_settings(
+    body: MediaSettingsUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update media configs in SystemSetting.
+    """
+    from app.modules.admin.models import SystemSetting
+    try:
+        settings_dict = body.model_dump()
+        for k, v in settings_dict.items():
+            res = await db.execute(select(SystemSetting).where(SystemSetting.key == k))
+            setting = res.scalar_one_or_none()
+            if not setting:
+                setting = SystemSetting(key=k, value=str(v or ""), category="Media")
+                db.add(setting)
+            else:
+                setting.value = str(v or "")
+        await db.commit()
+        return {"status": "ok", "message": "Media configurations updated successfully."}
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to save media settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

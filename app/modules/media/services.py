@@ -201,6 +201,8 @@ class MediaService:
         """
         Download the image locally to static/uploads/media/, register in DB and return the details.
         """
+        db_settings = await cls.get_settings(db)
+        
         # Ensure uploads folder exists
         upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
         os.makedirs(upload_dir, exist_ok=True)
@@ -231,6 +233,13 @@ class MediaService:
         with open(filepath, "wb") as f:
             f.write(content_bytes)
 
+        # Apply crop if needed
+        crop_ratio = db_settings.get("media_crop_ratio") or "original"
+        cls.crop_to_ratio(filepath, crop_ratio)
+
+        # Recalculate file size after crop
+        final_size = os.path.getsize(filepath)
+
         # Save to DB
         local_path = f"/static/uploads/media/{filename}"
         
@@ -244,7 +253,7 @@ class MediaService:
                 provider=provider,
                 search_query=query,
                 mime_type=content_type,
-                size_bytes=len(content_bytes)
+                size_bytes=final_size
             )
             db.add(asset)
             await db.commit()
@@ -292,3 +301,47 @@ class MediaService:
             except Exception:
                 continue
         return results
+
+    @staticmethod
+    def crop_to_ratio(image_path: str, ratio: str):
+        """
+        Crop a local image file to the desired ratio (1:1, 16:9, 4:3, or original).
+        """
+        if not ratio or ratio == "original":
+            return
+
+        from PIL import Image
+        try:
+            with Image.open(image_path) as img:
+                w, h = img.size
+                if ratio == "1:1":
+                    target_w = target_h = min(w, h)
+                elif ratio == "16:9":
+                    if w / h > 16 / 9:
+                        target_h = h
+                        target_w = int(h * 16 / 9)
+                    else:
+                        target_w = w
+                        target_h = int(w * 9 / 16)
+                elif ratio == "4:3":
+                    if w / h > 4 / 3:
+                        target_h = h
+                        target_w = int(h * 4 / 3)
+                    else:
+                        target_w = w
+                        target_h = int(w * 3 / 4)
+                else:
+                    return
+
+                left = (w - target_w) // 2
+                top = (h - target_h) // 2
+                right = left + target_w
+                bottom = top + target_h
+
+                cropped = img.crop((left, top, right, bottom))
+                
+                # Maintain same file format on save
+                save_format = img.format or "JPEG"
+                cropped.save(image_path, format=save_format)
+        except Exception as e:
+            logger.error(f"[CROP IMAGE] Failed to crop image {image_path} to {ratio}: {e}")

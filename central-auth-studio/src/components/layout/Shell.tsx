@@ -118,6 +118,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       items: [
         { icon: <Search size={20} />, label: 'Image Search', path: '/admin/image-search', color: 'text-sky-400' },
         { icon: <ImageIcon size={20} />, label: 'Image Gallery', path: '/admin/images', color: 'text-sky-300' },
+        { icon: <Key size={20} />, label: 'Image Settings', path: '/admin/image-settings', color: 'text-sky-400' },
       ]
     });
 

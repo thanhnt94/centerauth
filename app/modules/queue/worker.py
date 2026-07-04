@@ -208,10 +208,11 @@ async def start_queue_worker():
     except Exception as startup_err:
         logger.error(f"[QueueWorker] Failed to reset stuck 'processing' tasks on startup: {startup_err}")
 
-    # Launch both workers in parallel
+    # Launch workers in parallel
     await asyncio.gather(
         start_ai_queue_worker(),
-        start_tts_queue_worker()
+        start_tts_queue_worker(),
+        start_image_queue_worker()
     )
 
 
@@ -254,7 +255,8 @@ async def start_ai_queue_worker():
                         QueuedTask.status == "pending",
                         or_(
                             QueuedTask.extra_data.is_(None),
-                            not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) & not_(QueuedTask.extra_data.like('%"task_type":"tts"%'))
+                            not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) & not_(QueuedTask.extra_data.like('%"task_type":"tts"%')) &
+                            not_(QueuedTask.extra_data.like('%"task_type": "image"%')) & not_(QueuedTask.extra_data.like('%"task_type":"image"%'))
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
@@ -529,3 +531,115 @@ async def start_tts_queue_worker():
             logger.error(f"[QueueWorker-TTS] Unexpected loop error: {loop_err}", exc_info=True)
 
         await asyncio.sleep(delay_tts)
+
+
+async def start_image_queue_worker():
+    """Poller worker dedicated solely to processing automatic image search & download tasks."""
+    logger.info("[QueueWorker] Image Search & Download Worker task started.")
+    from sqlalchemy import or_
+    from app.modules.media.services import MediaService
+
+    while True:
+        try:
+            async with SessionLocal(expire_on_commit=False) as db:
+                # Fetch oldest pending Image task
+                stmt = (
+                    select(QueuedTask)
+                    .where(
+                        QueuedTask.status == "pending",
+                        or_(
+                            QueuedTask.extra_data.like('%"task_type": "image"%'),
+                            QueuedTask.extra_data.like('%"task_type":"image"%')
+                        )
+                    )
+                    .order_by(QueuedTask.created_at.asc())
+                    .limit(1)
+                )
+                result = await db.execute(stmt)
+                task = result.scalar_one_or_none()
+
+                if not task:
+                    await asyncio.sleep(2)
+                    continue
+
+                task_id = task.id
+                task_prompt = task.prompt
+                task_attempts = task.attempts + 1
+                task_max_retries = task.max_retries
+
+                task.status = "processing"
+                task.processed_at = datetime.utcnow()
+                task.attempts += 1
+                try:
+                    await db.commit()
+                except Exception as commit_err:
+                    await db.rollback()
+                    logger.warning(f"[QueueWorker-Image] Failed to lock task {task.id}: {commit_err}")
+                    continue
+
+                logger.info(f"[QueueWorker-Image] Processing task {task.id}")
+
+                try:
+                    # 1. Search for image using MediaService (auto provider priority)
+                    results = await MediaService.search_images(task_prompt, provider="auto", db=db)
+                    if not results:
+                        raise Exception(f"No image results found for prompt: {task_prompt}")
+                        
+                    first_match = results[0]
+                    
+                    # 2. Download and register image locally
+                    download_res = await MediaService.download_image(
+                        url=first_match["url"],
+                        provider=first_match["provider"],
+                        query=task_prompt,
+                        db=db
+                    )
+                    
+                    # Save results
+                    task.result = download_res["local_path"]
+                    task.status = "completed"
+                    task.completed_at = datetime.utcnow()
+                    logger.info(f"[QueueWorker-Image] Image Task {task.id} completed successfully.")
+                except Exception as img_err:
+                    logger.error(f"[QueueWorker-Image] Image generation failed: {img_err}")
+                    try:
+                        # Reload task in new session to avoid dirty session state
+                        async with SessionLocal() as db_err_session:
+                            stmt_reload = select(QueuedTask).where(QueuedTask.id == task_id)
+                            res_reload = await db_err_session.execute(stmt_reload)
+                            task_reload = res_reload.scalar_one_or_none()
+                            if not task_reload:
+                                logger.error(f"[QueueWorker-Image] Failed to reload task {task_id} on error.")
+                                continue
+
+                            if task_attempts < task_max_retries:
+                                task_reload.status = "pending"
+                                task_reload.error = f"Attempt {task_attempts} failed: {str(img_err)[:500]}"
+                            else:
+                                task_reload.status = "failed"
+                                task_reload.error = f"Max retries exceeded. Last error: {str(img_err)[:500]}"
+                                task_reload.completed_at = datetime.utcnow()
+                            await db_err_session.commit()
+                    except Exception as reload_err:
+                        logger.error(f"[QueueWorker-Image] Failed to save error status for task {task_id}: {reload_err}")
+                    continue
+
+                try:
+                    await db.commit()
+                except Exception as commit_err:
+                    await db.rollback()
+                    logger.warning(f"[QueueWorker-Image] Failed to save task {task.id}: {commit_err}")
+                    continue
+
+                if task.status in ("completed", "failed") and task.callback_url:
+                    await _send_callback(task)
+                    try:
+                        await db.commit()
+                    except Exception as cb_err:
+                        await db.rollback()
+                        logger.warning(f"[QueueWorker-Image] Failed to save callback delivery for task {task.id}: {cb_err}")
+
+        except Exception as loop_err:
+            logger.error(f"[QueueWorker-Image] Unexpected loop error: {loop_err}", exc_info=True)
+
+        await asyncio.sleep(5)

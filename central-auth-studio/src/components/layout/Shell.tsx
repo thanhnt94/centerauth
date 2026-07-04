@@ -180,16 +180,16 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
 
       {/* Sidebar */}
       <aside 
-        className={`fixed top-0 left-0 bottom-0 z-50 transition-all duration-500 bg-slate-950/50 backdrop-blur-2xl border-r border-white/5
-          ${isSidebarOpen ? 'w-80' : 'w-0 -translate-x-full lg:w-24 lg:translate-x-0'}`}
+        className={`fixed top-0 left-0 bottom-0 z-50 transition-all duration-300 ease-in-out bg-slate-950/95 backdrop-blur-2xl border-r border-white/5
+          w-[280px] sm:w-80 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-24'}`}
       >
-        <div className="flex flex-col h-full p-8">
+        <div className="flex flex-col h-full p-6 sm:p-8">
           {/* Logo */}
-          <div className="flex items-center gap-4 mb-12">
-             <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.3)]">
+          <div className="flex items-center gap-4 mb-8 sm:mb-12">
+             <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.3)] shrink-0">
                <Shield className="text-white" size={24} />
              </div>
-             {isSidebarOpen && (
+             {(isSidebarOpen || window.innerWidth < 1024) && (
                <motion.div 
                  initial={{ opacity: 0, x: -10 }}
                  animate={{ opacity: 1, x: 0 }}
@@ -205,9 +205,10 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
           <nav className="flex-1 space-y-6 overflow-y-auto pr-1 custom-scrollbar">
             {sections.map((section) => {
               const isExpanded = expandedSections[section.key];
+              const showLabels = isSidebarOpen || window.innerWidth < 1024;
               return (
                 <div key={section.key} className="space-y-2">
-                  {isSidebarOpen ? (
+                  {showLabels ? (
                     <button
                       onClick={() => toggleSection(section.key)}
                       type="button"
@@ -221,7 +222,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
                   )}
                   
                   <AnimatePresence initial={false}>
-                    {(!isSidebarOpen || isExpanded) && (
+                    {(!isSidebarOpen || isExpanded || window.innerWidth < 1024) && (
                       <motion.div
                         initial={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
                         animate={isSidebarOpen ? { height: 'auto', opacity: 1 } : undefined}
@@ -238,10 +239,10 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
                               className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group
                                 ${isActive ? 'bg-indigo-600 shadow-[0_0_30px_rgba(79,70,229,0.2)]' : 'hover:bg-white/5'}`}
                             >
-                              <div className={`${isActive ? 'text-white' : item.color} group-hover:scale-110 transition-transform`}>
+                              <div className={`${isActive ? 'text-white' : item.color} group-hover:scale-110 transition-transform shrink-0`}>
                                 {item.icon}
                               </div>
-                              {isSidebarOpen && (
+                              {showLabels && (
                                 <span className={`text-xs font-bold uppercase tracking-wider ${isActive ? 'text-white' : 'text-slate-400'}`}>
                                   {item.label}
                                 </span>
@@ -258,13 +259,13 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
           </nav>
 
           {/* User Section */}
-          <div className="pt-8 border-t border-white/5">
+          <div className="pt-6 border-t border-white/5">
              <button 
                onClick={() => window.location.href = '/api/auth/logout'}
                className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-rose-500/10 transition-all group"
              >
-               <LogOut className="text-slate-500 group-hover:text-rose-500" size={20} />
-               {isSidebarOpen && (
+               <LogOut className="text-slate-500 group-hover:text-rose-500 shrink-0" size={20} />
+               {(isSidebarOpen || window.innerWidth < 1024) && (
                  <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-rose-500">Logout Session</span>
                )}
              </button>
@@ -275,12 +276,12 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       {/* Main Content */}
       <main className={`flex-1 transition-all duration-500 ${isSidebarOpen ? 'lg:ml-80' : 'lg:ml-24'}`}>
         {/* Header */}
-        <header className={`sticky top-0 z-40 px-12 h-24 flex items-center justify-between transition-all duration-300
+        <header className={`sticky top-0 z-40 px-6 sm:px-12 h-16 sm:h-24 flex items-center justify-between transition-all duration-300
           ${scrolled ? 'bg-slate-950/80 backdrop-blur-xl border-b border-white/5' : 'bg-transparent'}`}>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-3 rounded-xl hover:bg-white/5 text-slate-400 transition-all"
+              className="p-2.5 rounded-xl hover:bg-white/5 text-slate-400 transition-all"
             >
               <Menu size={20} />
             </button>
@@ -315,7 +316,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
         </header>
 
         {/* Page Content */}
-        <div className="p-12 pb-24 max-w-[1600px] mx-auto">
+        <div className="p-4 sm:p-6 lg:p-12 pb-24 max-w-[1600px] mx-auto">
           {children}
         </div>
       </main>

@@ -183,31 +183,43 @@ class AudioGenerator:
                 
                 success_segment = False
                 
-                # Look up customized voice name and engine from user settings
-                # If lang is already a full voice string (contains 'Neural' or 'Wavenet'), use it directly!
-                is_full_voice = "Neural" in lang or "Wavenet" in lang or len(lang) > 10
-                
-                if is_full_voice:
-                    tag_engine = "google" if ("Neural2" in lang or "Wavenet" in lang) else "edge"
-                    configured_voice = lang
-                else:
-                    voice_data = default_voices.get(lang)
-                    if isinstance(voice_data, dict):
-                        tag_engine = voice_data.get("engine", tts_engine)
-                        configured_voice = voice_data.get("voice")
+                # Determine tag_engine and configured_voice
+                if bypass_parsing:
+                    is_full_voice = "Neural" in lang or "Wavenet" in lang or len(lang) > 10
+                    if is_full_voice:
+                        tag_engine = "google" if ("Neural2" in lang or "Wavenet" in lang) else "edge"
+                        configured_voice = lang
                     else:
-                        tag_engine = tts_engine
-                        configured_voice = voice_data # it's a string or None
+                        tag_engine = "gtts"
+                        configured_voice = lang
+                else:
+                    is_full_voice = "Neural" in lang or "Wavenet" in lang or len(lang) > 10
+                    if is_full_voice:
+                        tag_engine = "google" if ("Neural2" in lang or "Wavenet" in lang) else "edge"
+                        configured_voice = lang
+                    else:
+                        voice_data = default_voices.get(lang)
+                        if isinstance(voice_data, dict):
+                            tag_engine = voice_data.get("engine", tts_engine)
+                            configured_voice = voice_data.get("voice")
+                        else:
+                            tag_engine = tts_engine
+                            configured_voice = voice_data # it's a string or None
                 
-                # 1. Try Google Cloud TTS first if tag_engine is "google"
-                if tag_engine == "google" and google_key.strip():
-                    print(f"\n[TTS GENERATOR] [TRY GOOGLE CLOUD] Attempting Google Cloud TTS for tag '{lang}'...")
-                    success_segment = await cls.generate_google_cloud_tts(seg_text, lang, google_key.strip(), temp_path, configured_voice)
+                # 1. Google Cloud TTS
+                if tag_engine == "google":
+                    if not google_key.strip():
+                        if bypass_parsing:
+                            raise ValueError("Google Cloud API Key is not configured in settings. Cannot test Google Cloud TTS.")
+                    else:
+                        print(f"\n[TTS GENERATOR] [TRY GOOGLE CLOUD] Attempting Google Cloud TTS for tag '{lang}'...")
+                        success_segment = await cls.generate_google_cloud_tts(seg_text, lang, google_key.strip(), temp_path, configured_voice)
+                        if not success_segment and bypass_parsing:
+                            raise ValueError("Google Cloud TTS synthesis failed. Please check API Key or Voice parameter.")
                     
-                # 2. Try Edge TTS if tag_engine is "edge" or if Google Cloud failed
-                if not success_segment and tag_engine != "gtts":
+                # 2. Microsoft Edge TTS
+                if not success_segment and (tag_engine == "edge" or (not bypass_parsing and tag_engine == "google")):
                     voice_edge = configured_voice or cls.EDGE_VOICES.get(lang.split('-')[0].lower())
-                    edge_err = None
                     if voice_edge:
                         print(f"\n[TTS GENERATOR] [TRY EDGE] Attempting Microsoft Edge TTS for tag '{lang}' using voice '{voice_edge}'...")
                         try:
@@ -218,14 +230,14 @@ class AudioGenerator:
                             print(log_msg)
                             logger.info(log_msg)
                         except Exception as ee:
-                            edge_err = str(ee)
                             logger.error(f"[TTS WARNING] Microsoft Edge TTS failed for voice '{voice_edge}': {ee}")
+                            if bypass_parsing:
+                                raise ValueError(f"Microsoft Edge TTS failed: {ee}")
                     
-                # 3. Fallback to gTTS as final resort
-                if not success_segment:
-                    # If configured_voice was specified and is a short code (like 'vi', 'en'), use it, otherwise fallback to split tag
+                # 3. Google Translate gTTS
+                if not success_segment and (tag_engine == "gtts" or not bypass_parsing):
                     gtts_lang = configured_voice if (configured_voice and len(configured_voice) <= 5) else lang.split('-')[0].lower()
-                    print(f"[TTS GENERATOR] [TRY GTTS] Falling back to Google TTS (gTTS) for tag '{lang}' using lang '{gtts_lang}'...")
+                    print(f"[TTS GENERATOR] [TRY GTTS] Attempting Google TTS (gTTS) for tag '{lang}' using lang '{gtts_lang}'...")
                     try:
                         def run_gtts():
                             tts = gTTS(text=seg_text, lang=gtts_lang)
@@ -236,10 +248,10 @@ class AudioGenerator:
                         print(log_msg)
                         logger.info(log_msg)
                     except Exception as ge:
-                        logger.error(f"[TTS CRITICAL ERROR] Google TTS fallback also failed: {ge}")
+                        logger.error(f"[TTS CRITICAL ERROR] Google TTS failed: {ge}")
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
-                        raise ValueError(f"All TTS engines failed for text segment '{seg_text[:20]}'")
+                        raise ValueError(f"TTS synthesis failed on all available engines for segment '{seg_text[:20]}'. Details: {ge}")
                         
                 temp_files.append(temp_path)
                 

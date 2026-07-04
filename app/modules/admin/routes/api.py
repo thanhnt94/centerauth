@@ -788,9 +788,16 @@ async def telegram_broadcast(request: Request, db: AsyncSession = Depends(get_db
     if not text:
         raise HTTPException(status_code=400, detail="Message text is required")
         
-    from app.modules.queue.telegram_bot import bot
-    if not bot:
-        raise HTTPException(status_code=503, detail="Telegram bot is not currently active or initialized.")
+    from app.modules.admin.models import SystemSetting
+    token_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "telegram_bot_token"))
+    token_setting = token_res.scalar_one_or_none()
+    token = token_setting.value.strip() if token_setting and token_setting.value else None
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="Telegram Bot Token is not configured in settings.")
+        
+    from telegram import Bot
+    client_bot = Bot(token=token)
         
     from app.modules.queue.models import UserTelegramConfig
     if not target_chat_ids:
@@ -808,7 +815,7 @@ async def telegram_broadcast(request: Request, db: AsyncSession = Depends(get_db
     failed_count = 0
     for chat_id in target_chat_ids:
         try:
-            await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            await client_bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
             sent_count += 1
         except Exception as send_err:
             logger.error(f"[TelegramAdmin] Broadcast failed for {chat_id}: {send_err}")

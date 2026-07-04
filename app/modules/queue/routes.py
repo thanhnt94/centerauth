@@ -562,15 +562,21 @@ async def send_telegram_message(
         raise HTTPException(status_code=400, detail="Missing chat_id or text")
         
     from app.modules.queue.telegram_bot import bot
-    if not bot:
-        # Try dynamic initialization check
-        from app.modules.queue.telegram_bot import start_telegram_bot
-        # We don't block here, but we warn
-        logger.warning("[TelegramBot] Centralized Bot instance is not active/running.")
-        raise HTTPException(status_code=503, detail="Telegram Bot is not active on CentralAuth server.")
+    client_bot = bot
+    if not client_bot:
+        token_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "telegram_bot_token"))
+        token_setting = token_res.scalar_one_or_none()
+        token = token_setting.value.strip() if token_setting and token_setting.value else None
+        
+        if not token:
+            logger.warning("[TelegramBot] Centralized Bot instance is not active/running and no Token configured.")
+            raise HTTPException(status_code=503, detail="Telegram Bot is not configured on CentralAuth server.")
+            
+        from telegram import Bot
+        client_bot = Bot(token=token)
         
     try:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        await client_bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
         return {"status": "success"}
     except Exception as e:
         logger.error(f"[TelegramBot] Centralized send failed: {e}")

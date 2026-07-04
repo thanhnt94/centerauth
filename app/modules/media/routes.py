@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import List, Optional
+import os
+from app.core.config import settings
 import logging
 
 from app.core.db import get_db
@@ -105,6 +107,64 @@ async def get_library(
         return response_list
     except Exception as e:
         logger.error(f"Failed to get media library: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/upload", response_model=MediaDownloadResponse)
+async def upload_media_asset(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upload a media asset manually from admin.
+    """
+    from app.modules.media.models import MediaAsset
+    import uuid
+    
+    try:
+        # Generate filename
+        ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+        unique_filename = f"{uuid.uuid4().hex}.{ext}"
+        
+        upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
+        os.makedirs(upload_dir, exist_ok=True)
+        dest_path = os.path.join(upload_dir, unique_filename)
+        
+        # Save the file
+        size_bytes = 0
+        with open(dest_path, "wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024) # 1MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
+                size_bytes += len(chunk)
+                
+        # Add to DB
+        asset = MediaAsset(
+            filename=unique_filename,
+            original_url="upload",
+            provider="manual",
+            search_query=file.filename,
+            mime_type=file.content_type or f"image/{ext}",
+            size_bytes=size_bytes
+        )
+        db.add(asset)
+        await db.commit()
+        await db.refresh(asset)
+        
+        local_path = f"/static/uploads/media/{asset.filename}"
+        return {
+            "id": asset.id,
+            "filename": asset.filename,
+            "local_path": local_path,
+            "provider": asset.provider,
+            "search_query": asset.search_query,
+            "mime_type": asset.mime_type,
+            "size_bytes": asset.size_bytes
+        }
+    except Exception as e:
+        logger.error(f"Failed to upload media asset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class MediaSettingsUpdateRequest(BaseModel):

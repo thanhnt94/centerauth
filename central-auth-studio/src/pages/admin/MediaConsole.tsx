@@ -60,6 +60,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
   const [downloadingUrls, setDownloadingUrls] = useState<Record<string, boolean>>({});
   const [downloadSuccessUrls, setDownloadSuccessUrls] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'library') {
@@ -203,6 +204,34 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
     } catch (err) {
       console.error(err);
       alert('Network error while deleting media asset');
+    }
+  };
+
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/chat/media/upload', {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const newAsset = await res.json();
+        setLibrary(prev => [newAsset, ...prev]);
+      } else {
+        const err = await res.json();
+        alert(`Upload failed: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while uploading file');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -392,6 +421,34 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
             exit={{ opacity: 0, y: -15 }}
             className="space-y-6"
           >
+            {/* Upload Zone */}
+            <div className="glass p-6 rounded-3xl border border-white/5 space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-300">Upload Media Asset</h3>
+              <div className="border border-white/10 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center gap-3 bg-slate-950/20 hover:bg-slate-950/40 transition-colors relative group">
+                <input 
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUploadFile}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  disabled={uploading}
+                />
+                {uploading ? (
+                  <>
+                    <Loader2 className="animate-spin text-sky-400" size={32} />
+                    <p className="text-xs font-bold text-slate-400">Uploading your asset to media vault...</p>
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="text-slate-500 group-hover:text-sky-400 transition-colors" size={32} />
+                    <div className="text-center">
+                      <p className="text-xs font-black text-slate-200">Click or drag image to upload</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Supports PNG, JPG, JPEG, GIF up to 10MB</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Library Grid */}
             {libraryLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -425,7 +482,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
 
                       <div className="flex gap-2">
                         <button 
-                          onClick={() => copyToClipboard(window.location.origin + asset.local_path, asset.id)}
+                          onClick={() => copyToClipboard(`central-media://${asset.filename}`, asset.id)}
                           className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
                             copiedId === asset.id 
                               ? 'bg-emerald-600 text-white' 
@@ -433,7 +490,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
                           }`}
                         >
                           {copiedId === asset.id ? <Check size={12} /> : <Copy size={12} />}
-                          {copiedId === asset.id ? 'Copied' : 'Copy Path'}
+                          {copiedId === asset.id ? 'Copied' : 'Copy Link'}
                         </button>
                         <a 
                           href={asset.local_path} 

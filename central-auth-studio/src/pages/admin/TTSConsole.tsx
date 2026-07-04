@@ -15,23 +15,56 @@ interface TTSFile {
 interface TTSSettings {
   default_engine: string;
   google_api_key?: string;
-  default_voices: Record<string, string>;
+  default_voices: Record<string, any>;
   queue_worker_delay_seconds: number;
   queue_max_retries: number;
 }
 
-const EDGE_VOICES_MAP = {
-  'vi': { name: 'Hoai My (Vietnamese)', code: 'vi-VN-HoaiMyNeural' },
-  'en': { name: 'Aria (English)', code: 'en-US-AriaNeural' },
-  'ja': { name: 'Nanami (Japanese)', code: 'ja-JP-NanamiNeural' },
-  'zh': { name: 'Xiaoxiao (Chinese)', code: 'zh-CN-XiaoxiaoNeural' },
-  'ko': { name: 'SunHi (Korean)', code: 'ko-KR-SunHiNeural' },
-  'fr': { name: 'Denise (French)', code: 'fr-FR-DeniseNeural' },
-  'de': { name: 'Killian (German)', code: 'de-DE-KillianNeural' },
-  'es': { name: 'Elvira (Spanish)', code: 'es-ES-ElviraNeural' },
-  'ru': { name: 'Svetlana (Russian)', code: 'ru-RU-SvetlanaNeural' },
-  'it': { name: 'Elsa (Italian)', code: 'it-IT-ElsaNeural' }
-};
+const EDGE_VOICE_OPTIONS = [
+  { value: 'vi-VN-HoaiMyNeural', label: 'Hoai My (Vietnamese - Female)' },
+  { value: 'vi-VN-NamMinhNeural', label: 'Nam Minh (Vietnamese - Male)' },
+  { value: 'en-US-AriaNeural', label: 'Aria (English - US - Female)' },
+  { value: 'en-US-GuyNeural', label: 'Guy (English - US - Male)' },
+  { value: 'en-GB-SoniaNeural', label: 'Sonia (English - UK - Female)' },
+  { value: 'ja-JP-NanamiNeural', label: 'Nanami (Japanese - Female)' },
+  { value: 'ja-JP-KeitaNeural', label: 'Keita (Japanese - Male)' },
+  { value: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao (Chinese - Female)' },
+  { value: 'ko-KR-SunHiNeural', label: 'SunHi (Korean - Female)' },
+  { value: 'fr-FR-DeniseNeural', label: 'Denise (French - Female)' },
+  { value: 'de-DE-KillianNeural', label: 'Killian (German - Male)' },
+  { value: 'es-ES-ElviraNeural', label: 'Elvira (Spanish - Female)' },
+  { value: 'ru-RU-SvetlanaNeural', label: 'Svetlana (Russian - Female)' },
+  { value: 'it-IT-ElsaNeural', label: 'Elsa (Italian - Female)' }
+];
+
+const GOOGLE_VOICE_OPTIONS = [
+  { value: 'vi-VN-Neural2-A', label: 'Vi (Vietnamese - Female)' },
+  { value: 'vi-VN-Neural2-F', label: 'Vi (Vietnamese - Male)' },
+  { value: 'en-US-Neural2-H', label: 'En (English - US - Female)' },
+  { value: 'en-US-Neural2-J', label: 'En (English - US - Male)' },
+  { value: 'ja-JP-Neural2-C', label: 'Ja (Japanese - Female)' },
+  { value: 'ja-JP-Neural2-D', label: 'Ja (Japanese - Male)' },
+  { value: 'zh-CN-Neural2-C', label: 'Zh (Chinese - Female)' },
+  { value: 'ko-KR-Neural2-A', label: 'Ko (Korean - Female)' },
+  { value: 'fr-FR-Neural2-B', label: 'Fr (French - Female)' },
+  { value: 'de-DE-Neural2-F', label: 'De (German - Male)' },
+  { value: 'es-ES-Neural2-F', label: 'Es (Spanish - Female)' },
+  { value: 'ru-RU-Wavenet-A', label: 'Ru (Russian - Female)' },
+  { value: 'it-IT-Neural2-C', label: 'It (Italian - Female)' }
+];
+
+const GTTS_VOICE_OPTIONS = [
+  { value: 'vi', label: 'Vietnamese (vi)' },
+  { value: 'en', label: 'English (en)' },
+  { value: 'ja', label: 'Japanese (ja)' },
+  { value: 'zh', label: 'Chinese (zh)' },
+  { value: 'ko', label: 'Korean (ko)' },
+  { value: 'fr', label: 'French (fr)' },
+  { value: 'de', label: 'German (de)' },
+  { value: 'es', label: 'Spanish (es)' },
+  { value: 'ru', label: 'Russian (ru)' },
+  { value: 'it', label: 'Italian (it)' }
+];
 
 interface TTSConsoleProps {
   defaultTab?: 'create' | 'gallery' | 'settings';
@@ -203,12 +236,12 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
     }
   };
 
-  const handleVoiceMappingChange = (oldTag: string, newTag: string, voiceValue: string) => {
+  const handleVoiceMappingChange = (oldTag: string, newTag: string, engine: string, voice: string) => {
     const updated = { ...settings.default_voices };
     if (oldTag !== newTag) {
       delete updated[oldTag];
     }
-    updated[newTag] = voiceValue;
+    updated[newTag] = { engine, voice };
     setSettings({ ...settings, default_voices: updated });
   };
 
@@ -223,7 +256,7 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
       ...settings,
       default_voices: {
         ...settings.default_voices,
-        [newTag]: ''
+        [newTag]: { engine: 'edge', voice: 'vi-VN-HoaiMyNeural' }
       }
     });
   };
@@ -279,11 +312,22 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">TTS Engine</label>
                 <select
                   value={selectedEngine}
-                  onChange={(e) => setSelectedEngine(e.target.value)}
+                  onChange={(e) => {
+                    const newEngine = e.target.value;
+                    setSelectedEngine(newEngine);
+                    // Reset selected voice to first item of new engine list
+                    const list = newEngine === 'google' 
+                      ? GOOGLE_VOICE_OPTIONS 
+                      : newEngine === 'gtts' 
+                        ? GTTS_VOICE_OPTIONS 
+                        : EDGE_VOICE_OPTIONS;
+                    setSelectedLang(list[0].value);
+                  }}
                   className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
                 >
                   <option value="edge">Microsoft Edge TTS (Premium Neural)</option>
-                  <option value="gtts">Google TTS (gTTS Standard)</option>
+                  <option value="gtts">Google Translate (gTTS Free)</option>
+                  <option value="google">Google Cloud TTS (Premium Neural2/Wavenet)</option>
                 </select>
               </div>
 
@@ -295,9 +339,13 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                   onChange={(e) => setSelectedLang(e.target.value)}
                   className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
                 >
-                  {Object.entries(EDGE_VOICES_MAP).map(([key, info]) => (
-                    <option key={key} value={key}>
-                      {info.name} ({key.toUpperCase()})
+                  {(selectedEngine === 'google' 
+                    ? GOOGLE_VOICE_OPTIONS 
+                    : selectedEngine === 'gtts' 
+                      ? GTTS_VOICE_OPTIONS 
+                      : EDGE_VOICE_OPTIONS).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
@@ -540,42 +588,85 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                 </button>
               </div>
               
-              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(settings.default_voices).length === 0 ? (
                   <p className="text-xs text-slate-500 italic">No voice mappings configured. Add a mapping to translate tags in prompts to synthesized voices.</p>
                 ) : (
-                  Object.entries(settings.default_voices).map(([tag, voice]) => (
-                    <div key={tag} className="flex items-center gap-3 bg-slate-900/30 p-3 rounded-xl border border-white/5">
-                      <div className="w-1/4">
-                        <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Prompt Tag</label>
-                        <input
-                          type="text"
-                          value={tag}
-                          onChange={(e) => handleVoiceMappingChange(tag, e.target.value, voice)}
-                          placeholder="e.g. ja-1"
-                          className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2 px-3 text-xs text-white font-bold"
-                        />
+                  Object.entries(settings.default_voices).map(([tag, voice]) => {
+                    const info = typeof voice === 'object' && voice !== null
+                      ? (voice as { engine: string, voice: string })
+                      : { engine: 'edge', voice: String(voice) };
+                    const engine = info.engine || 'edge';
+                    const voiceVal = info.voice || '';
+
+                    return (
+                      <div key={tag} className="flex items-center gap-3 bg-slate-900/30 p-3 rounded-xl border border-white/5">
+                        {/* Tag Name */}
+                        <div className="w-1/5">
+                          <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Prompt Tag</label>
+                          <input
+                            type="text"
+                            value={tag}
+                            onChange={(e) => handleVoiceMappingChange(tag, e.target.value, engine, voiceVal)}
+                            placeholder="e.g. ja-1"
+                            className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2 px-3 text-xs text-white font-bold"
+                          />
+                        </div>
+
+                        {/* Tag Engine */}
+                        <div className="w-1/4">
+                          <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">TTS Engine</label>
+                          <select
+                            value={engine}
+                            onChange={(e) => {
+                              const newEngine = e.target.value;
+                              const list = newEngine === 'google' 
+                                ? GOOGLE_VOICE_OPTIONS 
+                                : newEngine === 'gtts' 
+                                  ? GTTS_VOICE_OPTIONS 
+                                  : EDGE_VOICE_OPTIONS;
+                              handleVoiceMappingChange(tag, tag, newEngine, list[0].value);
+                            }}
+                            className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2.5 px-3 text-xs text-white font-bold"
+                          >
+                            <option value="edge">Edge TTS (Free)</option>
+                            <option value="gtts">gTTS Translate</option>
+                            <option value="google">Google Cloud</option>
+                          </select>
+                        </div>
+
+                        {/* Tag Voice */}
+                        <div className="flex-1">
+                          <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Voice & Language</label>
+                          <select
+                            value={voiceVal}
+                            onChange={(e) => handleVoiceMappingChange(tag, tag, engine, e.target.value)}
+                            className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2.5 px-3 text-xs text-white font-mono"
+                          >
+                            {(engine === 'google' 
+                              ? GOOGLE_VOICE_OPTIONS 
+                              : engine === 'gtts' 
+                                ? GTTS_VOICE_OPTIONS 
+                                : EDGE_VOICE_OPTIONS).map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Remove Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveVoiceMapping(tag)}
+                          className="mt-4 p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition-all"
+                          title="Remove Mapping"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                      <div className="flex-1">
-                        <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Voice String</label>
-                        <input
-                          type="text"
-                          value={voice}
-                          onChange={(e) => handleVoiceMappingChange(tag, tag, e.target.value)}
-                          placeholder="e.g. ja-JP-KeitaNeural or vi-VN-Neural2-A"
-                          className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2 px-3 text-xs text-white font-mono"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveVoiceMapping(tag)}
-                        className="mt-4 p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition-all"
-                        title="Remove Mapping"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

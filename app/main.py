@@ -118,25 +118,55 @@ async def lifespan(app: FastAPI):
             await db.commit()
             print("[SEED] Telegram system settings initialized.")
             
-    # 4. Start background queue worker
-    worker_task = asyncio.create_task(start_queue_worker())
-    print("[QUEUE] Background worker started.")
+    # 4. Start background queue worker and telegram bot (only in one worker process)
+    is_main_worker = False
+    lock_file = None
+    try:
+        import fcntl
+        lock_file = open('/tmp/centralauth_worker.lock', 'w')
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        is_main_worker = True
+    except (ImportError, IOError):
+        import os
+        if os.name == 'nt':
+            is_main_worker = True
+        else:
+            is_main_worker = False
 
-    # 5. Start background Telegram Bot polling
-    from app.modules.queue.telegram_bot import start_telegram_bot, stop_bot_app
-    bot_task = asyncio.create_task(start_telegram_bot())
-    print("[TELEGRAM] Centralized Bot background task spawned.")
+    worker_task = None
+    bot_task = None
+    
+    if is_main_worker:
+        worker_task = asyncio.create_task(start_queue_worker())
+        print("[QUEUE] Background worker started.")
+        
+        from app.modules.queue.telegram_bot import start_telegram_bot
+        bot_task = asyncio.create_task(start_telegram_bot())
+        print("[TELEGRAM] Centralized Bot background task spawned.")
+    else:
+        print("[LIFESPAN] Background tasks skipped (another worker holds the lock).")
             
     yield
 
     # Cleanup: cancel worker on shutdown
-    worker_task.cancel()
-    bot_task.cancel()
+    if worker_task:
+        worker_task.cancel()
+    if bot_task:
+        bot_task.cancel()
     try:
-        await asyncio.gather(worker_task, bot_task, return_exceptions=True)
+        tasks = [t for t in [worker_task, bot_task] if t is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
     except Exception:
         pass
+    
+    from app.modules.queue.telegram_bot import stop_bot_app
     await stop_bot_app()
+    if lock_file:
+        try:
+            lock_file.close()
+        except Exception:
+            pass
     print("[QUEUE/TELEGRAM] Background services stopped.")
 
 app = FastAPI(

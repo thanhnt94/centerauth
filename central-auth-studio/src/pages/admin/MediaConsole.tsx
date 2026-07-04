@@ -22,8 +22,16 @@ interface SavedAsset {
   size_bytes: number;
 }
 
-export const MediaConsole: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'search' | 'library'>('search');
+interface MediaConsoleProps {
+  defaultTab?: 'search' | 'library';
+}
+
+export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search' }) => {
+  const [activeTab, setActiveTab] = useState<'search' | 'library'>(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
   const [query, setQuery] = useState('');
   const [provider, setProvider] = useState('auto');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -138,39 +146,27 @@ export const MediaConsole: React.FC = () => {
     <div className="space-y-8">
       {/* Title */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-            <ImageIcon className="text-sky-400" size={32} />
-            Central Media <span className="text-sky-400">Space</span>
-          </h2>
-          <p className="text-slate-400 text-sm font-medium mt-1">
-            Search, download, and manage unified media assets for the entire ecosystem.
-          </p>
-        </div>
-
-        {/* Tab Controls */}
-        <div className="flex bg-slate-900/50 p-1.5 rounded-2xl border border-white/5 shrink-0 self-start md:self-center">
-          <button 
-            onClick={() => setActiveTab('search')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${
-              activeTab === 'search' 
-                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20' 
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Internet Search
-          </button>
-          <button 
-            onClick={() => setActiveTab('library')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${
-              activeTab === 'library' 
-                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20' 
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Local Library ({activeTab === 'library' ? library.length : '...'})
-          </button>
-        </div>
+        {activeTab === 'search' ? (
+          <div>
+            <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+              <Search className="text-sky-400" size={32} />
+              Image <span className="text-sky-400">Search</span>
+            </h2>
+            <p className="text-slate-400 text-sm font-medium mt-1">
+              Search the internet for high quality images and save them directly to storage.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+              <ImageIcon className="text-sky-400" size={32} />
+              Image <span className="text-sky-400">Space</span>
+            </h2>
+            <p className="text-slate-400 text-sm font-medium mt-1">
+              Manage downloaded media assets inside unified ecosystem library.
+            </p>
+          </div>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -204,6 +200,7 @@ export const MediaConsole: React.FC = () => {
                   className="bg-slate-950/50 border border-white/10 text-white px-4 py-3 rounded-2xl focus:outline-none focus:border-sky-500/50 font-bold text-sm"
                 >
                   <option value="auto">Auto (Priority List)</option>
+                  <option value="bing">Bing Image Search (Free)</option>
                   <option value="wikimedia">Wikimedia Commons (Free)</option>
                   <option value="unsplash">Unsplash API</option>
                   <option value="pexels">Pexels API</option>

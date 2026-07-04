@@ -4,7 +4,7 @@ import {
   History, LogOut, Menu, Bell,
   Database, RefreshCw, Bot, Activity,
   ChevronDown, ChevronRight, Key, Volume2, Sliders,
-  Image as ImageIcon
+  Image as ImageIcon, Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -116,7 +116,8 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       key: 'images',
       title: 'Image Space',
       items: [
-        { icon: <ImageIcon size={20} />, label: 'Image Hub', path: '/admin/images', color: 'text-sky-400' },
+        { icon: <Search size={20} />, label: 'Image Search', path: '/admin/image-search', color: 'text-sky-400' },
+        { icon: <ImageIcon size={20} />, label: 'Image Gallery', path: '/admin/images', color: 'text-sky-300' },
       ]
     });
 

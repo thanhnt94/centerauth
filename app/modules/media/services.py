@@ -1,4 +1,6 @@
 import os
+import re
+import json
 import httpx
 import hashlib
 import logging
@@ -35,7 +37,7 @@ class MediaService:
         google_cx = db_settings.get("google_cse_cx") or getattr(settings, "GOOGLE_CSE_CX", "")
 
         # Provider priority order
-        provider_priority_str = db_settings.get("media_provider_priority") or "wikimedia,unsplash,pexels,pixabay,google"
+        provider_priority_str = db_settings.get("media_provider_priority") or "bing,wikimedia,unsplash,pexels,pixabay,google"
         providers_list = [p.strip().lower() for p in provider_priority_str.split(",") if p.strip()]
 
         if provider != "auto":
@@ -46,7 +48,11 @@ class MediaService:
         async with httpx.AsyncClient(timeout=10.0) as client:
             for p in active_providers:
                 try:
-                    if p == "wikimedia":
+                    if p == "bing":
+                        results = await cls._search_bing(client, query)
+                        if results:
+                            return results
+                    elif p == "wikimedia":
                         results = await cls._search_wikimedia(client, query)
                         if results:
                             return results
@@ -253,3 +259,36 @@ class MediaService:
             "mime_type": asset.mime_type,
             "size_bytes": asset.size_bytes
         }
+
+    @staticmethod
+    async def _search_bing(client: httpx.AsyncClient, query: str) -> List[Dict[str, Any]]:
+        url = f'https://www.bing.com/images/search'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        }
+        res = await client.get(url, params={'q': query}, headers=headers)
+        if res.status_code != 200:
+            return []
+            
+        matches = re.findall(r'm="([^"]+)"', res.text)
+        if not matches:
+            matches = re.findall(r'm="({&quot;[^"]+})"', res.text)
+            
+        results = []
+        for m in matches:
+            m_json = m.replace('&quot;', '"').replace('&amp;', '&')
+            try:
+                data = json.loads(m_json)
+                murl = data.get('murl')
+                turl = data.get('turl')
+                title = data.get('t', 'Bing Image')
+                if murl:
+                    results.append({
+                        'title': title,
+                        'url': murl,
+                        'thumbnail': turl or murl,
+                        'provider': 'bing'
+                    })
+            except Exception:
+                continue
+        return results

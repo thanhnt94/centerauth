@@ -598,23 +598,33 @@ async def start_image_queue_worker():
                     logger.warning(f"[QueueWorker-Image] Failed to lock task {task.id}: {commit_err}")
                     continue
 
-                logger.info(f"[QueueWorker-Image] Processing task {task.id}")
-
                 try:
+                    logger.info(f"[QueueWorker-Image] Processing task {task.id}")
                     # 1. Search for image using MediaService (auto provider priority)
                     results = await MediaService.search_images(task_prompt, provider="auto", db=db)
                     if not results:
                         raise Exception(f"No image results found for prompt: {task_prompt}")
                         
-                    first_match = results[0]
-                    
-                    # 2. Download and register image locally
-                    download_res = await MediaService.download_image(
-                        url=first_match["url"],
-                        provider=first_match["provider"],
-                        query=task_prompt,
-                        db=db
-                    )
+                    download_res = None
+                    last_err = None
+                    # Try to download candidate images sequentially until one succeeds
+                    for idx, match in enumerate(results[:5]):
+                        try:
+                            logger.info(f"[QueueWorker-Image] Attempting to download image #{idx+1} from {match['provider']}: {match['url']}")
+                            download_res = await MediaService.download_image(
+                                url=match["url"],
+                                provider=match["provider"],
+                                query=task_prompt,
+                                db=db
+                            )
+                            if download_res:
+                                break
+                        except Exception as dl_err:
+                            logger.warning(f"[QueueWorker-Image] Failed to download image #{idx+1} ({match['url']}): {dl_err}")
+                            last_err = dl_err
+
+                    if not download_res:
+                        raise Exception(f"Failed to download any of the top 5 image search results. Last error: {last_err}")
                     
                     # Save results
                     task.result = download_res["local_path"]

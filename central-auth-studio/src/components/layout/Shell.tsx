@@ -16,8 +16,15 @@ interface ShellProps {
 
 export const Shell: React.FC<ShellProps> = ({ children }) => {
   const navigate = useNavigate();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const location = useLocation();
+  
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  }, [location.pathname]);
+
   const [scrolled, setScrolled] = useState(false);
   const [user, setUser] = useState<{username: string, role: string, avatar_initial: string} | null>(null);
   
@@ -160,12 +167,12 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     <div className="min-h-screen bg-slate-950 flex font-sans">
       {/* Sidebar Overlay (Mobile) */}
       <AnimatePresence>
-        {!isSidebarOpen && (
+        {isSidebarOpen && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setIsSidebarOpen(true)}
+            onClick={() => setIsSidebarOpen(false)}
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden"
           />
         )}

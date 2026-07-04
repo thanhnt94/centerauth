@@ -3,7 +3,8 @@ import {
   Shield, LayoutGrid, Users, Settings, 
   History, LogOut, Menu, Bell,
   Database, RefreshCw, Bot, Activity,
-  ChevronDown, ChevronRight, Key, Volume2, Sliders
+  ChevronDown, ChevronRight, Key, Volume2, Sliders,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -107,6 +108,15 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       items: [
         { icon: <Volume2 size={20} />, label: 'TTS Hub', path: '/admin/tts', color: 'text-indigo-400' },
         { icon: <Key size={20} />, label: 'TTS Settings', path: '/admin/tts-settings', color: 'text-indigo-300' },
+      ]
+    });
+
+    // Add Image Space section
+    sections.push({
+      key: 'images',
+      title: 'Image Space',
+      items: [
+        { icon: <ImageIcon size={20} />, label: 'Image Hub', path: '/admin/images', color: 'text-sky-400' },
       ]
     });
 

@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     # 1. Create tables on startup for CentralAuth DB
     from app.modules.queue.models import QueuedTask
     from app.modules.tts.models import TTSCache
+    from app.modules.media.models import MediaAsset
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
@@ -174,6 +175,7 @@ from app.modules.admin.routes import api as admin_api
 from app.modules.chat.routes import router as chat_router
 from app.modules.queue.routes import router as queue_router
 from app.modules.tts.routes import router as tts_router
+from app.modules.media.routes import router as media_router
 
 # Register Routers
 app.include_router(identity_api.router)
@@ -182,6 +184,7 @@ app.include_router(admin_api.router)
 app.include_router(chat_router)
 app.include_router(queue_router)
 app.include_router(tts_router)
+app.include_router(media_router)
 
 # --- SPA Routing (React app for auth, portal, admin) ---
 @app.get("/")

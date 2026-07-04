@@ -11,6 +11,7 @@ import { AIChatConsole } from './pages/admin/AIChatConsole';
 import { QueueDashboard } from './pages/admin/QueueDashboard';
 import { TTSConsole } from './pages/admin/TTSConsole';
 import { AIFailoverManager } from './pages/admin/AIFailoverManager';
+import { MediaConsole } from './pages/admin/MediaConsole';
 
 import { Logs } from './pages/admin/Logs';
 import { Settings as AdminSettings } from './pages/admin/Settings';
@@ -34,6 +35,7 @@ const App: React.FC = () => {
               <Route path="/admin/queue-settings" element={<QueueSettings />} />
               <Route path="/admin/tts" element={<TTSConsole defaultTab="playground" />} />
               <Route path="/admin/tts-settings" element={<TTSConsole defaultTab="settings" />} />
+              <Route path="/admin/images" element={<MediaConsole />} />
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

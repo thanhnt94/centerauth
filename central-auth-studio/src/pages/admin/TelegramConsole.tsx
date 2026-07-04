@@ -29,6 +29,7 @@ export const TelegramConsole: React.FC = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]); // list of chat IDs
+  const [testingConnection, setTestingConnection] = useState(false);
 
   // Form states
   const [broadcastText, setBroadcastText] = useState('');
@@ -137,6 +138,41 @@ export const TelegramConsole: React.FC = () => {
     setSettings(prev => prev.map(s => s.key === key ? { ...s, value: val } : s));
   };
 
+  const handleTestConnection = async () => {
+    const tokenSetting = settings.find(s => s.key === 'telegram_bot_token');
+    const token = tokenSetting?.value || '';
+    if (!token) {
+      alert('Please enter a bot token first.');
+      return;
+    }
+
+    setTestingConnection(true);
+    setStatusMsg(null);
+
+    try {
+      const response = await fetch('/admin/api/telegram/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        setStatusMsg({
+          type: 'success',
+          text: `Connection successful! Connected to bot: ${data.bot_name} (@${data.bot_username})`
+        });
+        // Update the state
+        updateSettingValue('telegram_bot_username', data.bot_username);
+      } else {
+        throw new Error(data.detail || 'Connection test failed');
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Connection test failed' });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const toggleSelectUser = (chatId: string) => {
     setSelectedUserIds(prev => 
       prev.includes(chatId) ? prev.filter(id => id !== chatId) : [...prev, chatId]
@@ -237,7 +273,16 @@ export const TelegramConsole: React.FC = () => {
                   })}
                 </div>
 
-                <div className="flex justify-end pt-4">
+                <div className="flex justify-end gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testingConnection}
+                    className="px-6 py-3 bg-white/5 border border-white/10 hover:bg-white/10 hover:border-sky-500 hover:text-sky-400 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {testingConnection ? <Loader2 size={12} className="animate-spin" /> : <Bot size={12} />}
+                    Test & Activate Connection
+                  </button>
                   <button 
                     type="submit" 
                     disabled={savingSettings}

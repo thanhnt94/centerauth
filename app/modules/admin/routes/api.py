@@ -10,6 +10,10 @@ from app.core.config import settings
 from app.modules.admin.models import SystemSetting, AuditLog
 import sqlite3
 import os
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/api", tags=["Admin API"])
 
@@ -810,4 +814,30 @@ async def telegram_broadcast(request: Request, db: AsyncSession = Depends(get_db
             failed_count += 1
             
     return {"status": "success", "sent_count": sent_count, "failed_count": failed_count}
+
+@router.post("/telegram/test")
+async def telegram_test(request: Request, db: AsyncSession = Depends(get_db)):
+    data = await request.json()
+    token = data.get("token", "").strip()
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="Token is required")
+        
+    try:
+        from telegram import Bot
+        temp_bot = Bot(token=token)
+        bot_info = await temp_bot.get_me()
+        
+        # If connection works, trigger start/restart of the bot application in background!
+        from app.modules.queue.telegram_bot import start_telegram_bot
+        asyncio.create_task(start_telegram_bot())
+        
+        return {
+            "status": "success",
+            "bot_name": bot_info.first_name,
+            "bot_username": bot_info.username
+        }
+    except Exception as e:
+        logger.error(f"[TelegramAdmin] Test connection failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to connect to Telegram API: {str(e)}")
 

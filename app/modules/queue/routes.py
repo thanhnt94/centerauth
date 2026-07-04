@@ -152,9 +152,32 @@ async def list_tasks(
         if task_type.lower() == "tts":
             query = query.where(QueuedTask.extra_data.like('%"task_type": "tts"%') | QueuedTask.extra_data.like('%"task_type":"tts"%'))
             count_query = count_query.where(QueuedTask.extra_data.like('%"task_type": "tts"%') | QueuedTask.extra_data.like('%"task_type":"tts"%'))
+        elif task_type.lower() == "image":
+            query = query.where(QueuedTask.extra_data.like('%"task_type": "image"%') | QueuedTask.extra_data.like('%"task_type":"image"%'))
+            count_query = count_query.where(QueuedTask.extra_data.like('%"task_type": "image"%') | QueuedTask.extra_data.like('%"task_type":"image"%'))
         elif task_type.lower() == "ai":
-            query = query.where(or_(QueuedTask.extra_data.is_(None), not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) & not_(QueuedTask.extra_data.like('%"task_type":"tts"%'))))
-            count_query = count_query.where(or_(QueuedTask.extra_data.is_(None), not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) & not_(QueuedTask.extra_data.like('%"task_type":"tts"%'))))
+            query = query.where(
+                or_(
+                    QueuedTask.extra_data.is_(None),
+                    (
+                        not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) &
+                        not_(QueuedTask.extra_data.like('%"task_type":"tts"%')) &
+                        not_(QueuedTask.extra_data.like('%"task_type": "image"%')) &
+                        not_(QueuedTask.extra_data.like('%"task_type":"image"%'))
+                    )
+                )
+            )
+            count_query = count_query.where(
+                or_(
+                    QueuedTask.extra_data.is_(None),
+                    (
+                        not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) &
+                        not_(QueuedTask.extra_data.like('%"task_type":"tts"%')) &
+                        not_(QueuedTask.extra_data.like('%"task_type": "image"%')) &
+                        not_(QueuedTask.extra_data.like('%"task_type":"image"%'))
+                    )
+                )
+            )
 
     query = query.order_by(QueuedTask.created_at.desc()).offset(offset).limit(limit)
 

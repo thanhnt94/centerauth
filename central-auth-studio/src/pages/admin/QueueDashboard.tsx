@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Activity, RefreshCw, Trash2, 
-  CheckCircle, XCircle, Clock, Search, Loader2, Volume2, FileText, Copy
+  CheckCircle, XCircle, Clock, Search, Loader2, Volume2, FileText, Copy, Image
 } from 'lucide-react';
 
 interface TaskItem {
@@ -16,7 +16,7 @@ interface TaskItem {
   attempts: number;
   callback_url?: string;
   callback_status?: 'sent' | 'failed' | null;
-  task_type?: 'ai-explain' | 'tts';
+  task_type?: 'ai-explain' | 'tts' | 'image';
   created_at: string;
   processed_at?: string;
   completed_at?: string;
@@ -322,6 +322,7 @@ export const QueueDashboard: React.FC = () => {
             <option value="">All Types</option>
             <option value="ai">AI Text</option>
             <option value="tts">TTS Audio</option>
+            <option value="image">Image Search</option>
           </select>
 
           {/* Provider Filter */}
@@ -407,6 +408,10 @@ export const QueueDashboard: React.FC = () => {
                         {task.task_type === 'tts' ? (
                           <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/10 flex items-center gap-0.5">
                             <Volume2 size={8} /> TTS
+                          </span>
+                        ) : task.task_type === 'image' ? (
+                          <span className="text-[8px] font-black uppercase tracking-widest text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/10 flex items-center gap-0.5">
+                            <Image size={8} /> IMAGE
                           </span>
                         ) : (
                           <span className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/10 flex items-center gap-0.5">
@@ -642,6 +647,7 @@ export const QueueDashboard: React.FC = () => {
                   <option value="">Tất cả loại (All)</option>
                   <option value="ai">AI Text</option>
                   <option value="tts">TTS Audio</option>
+                  <option value="image">Image Search</option>
                 </select>
               </div>
 

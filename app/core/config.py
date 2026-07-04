@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Queue Configurations
     QUEUE_API_SECRET: str = os.getenv("QUEUE_API_SECRET", "super-secret-token-123")
     QUEUE_RATE_LIMIT_DELAY: int = int(os.getenv("QUEUE_RATE_LIMIT_DELAY", "60"))
+    SOCKS5_PROXY: str = os.getenv("SOCKS5_PROXY", "")
 
     class Config:
         case_sensitive = True

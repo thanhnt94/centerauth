@@ -324,11 +324,17 @@ async def get_queue_settings(
     delay_setting_image = res_delay_image.scalar_one_or_none()
     rate_limit_delay_image = int(delay_setting_image.value) if delay_setting_image else 5
 
+    # Query socks5_proxy
+    res_proxy = await db.execute(select(SystemSetting).where(SystemSetting.key == "socks5_proxy"))
+    proxy_setting = res_proxy.scalar_one_or_none()
+    socks5_proxy = proxy_setting.value if proxy_setting else ""
+
     return {
         "is_paused": is_paused,
         "rate_limit_delay_ai": rate_limit_delay_ai,
         "rate_limit_delay_tts": rate_limit_delay_tts,
-        "rate_limit_delay_image": rate_limit_delay_image
+        "rate_limit_delay_image": rate_limit_delay_image,
+        "socks5_proxy": socks5_proxy
     }
 
 @router.post("/settings")
@@ -383,6 +389,15 @@ async def update_queue_settings(
                 db.add(SystemSetting(key="queue_rate_limit_delay_image", value=str(delay_val), description="Delay interval between image tasks", category="Queue"))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid rate_limit_delay_image")
+
+    if "socks5_proxy" in data:
+        proxy_val = data["socks5_proxy"].strip()
+        res_proxy = await db.execute(select(SystemSetting).where(SystemSetting.key == "socks5_proxy"))
+        proxy_setting = res_proxy.scalar_one_or_none()
+        if proxy_setting:
+            proxy_setting.value = proxy_val
+        else:
+            db.add(SystemSetting(key="socks5_proxy", value=proxy_val, description="SOCKS5 Proxy URL (e.g. socks5://user:pass@host:port)", category="Queue"))
             
     await db.commit()
     return await get_queue_settings(db, _auth)

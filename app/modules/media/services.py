@@ -45,7 +45,12 @@ class MediaService:
         else:
             active_providers = providers_list
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        proxy_url = db_settings.get("socks5_proxy") or getattr(settings, "SOCKS5_PROXY", "")
+        client_kwargs = {"timeout": 10.0}
+        if proxy_url and proxy_url.strip():
+            client_kwargs["proxy"] = proxy_url.strip()
+
+        async with httpx.AsyncClient(**client_kwargs) as client:
             for p in active_providers:
                 try:
                     if p == "bing":
@@ -207,7 +212,12 @@ class MediaService:
         upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
         os.makedirs(upload_dir, exist_ok=True)
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        proxy_url = db_settings.get("socks5_proxy") or getattr(settings, "SOCKS5_PROXY", "")
+        client_kwargs = {"timeout": 20.0}
+        if proxy_url and proxy_url.strip():
+            client_kwargs["proxy"] = proxy_url.strip()
+
+        async with httpx.AsyncClient(**client_kwargs) as client:
             headers = {'User-Agent': 'MindStackMediaService/1.0 (contact@mindstack.com) Python-httpx'}
             response = await client.get(url, headers=headers)
             if response.status_code != 200:

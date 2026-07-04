@@ -6,6 +6,7 @@ export const QueueSettings: React.FC = () => {
   const [rateLimitDelayAI, setRateLimitDelayAI] = useState(60);
   const [rateLimitDelayTTS, setRateLimitDelayTTS] = useState(5);
   const [rateLimitDelayImage, setRateLimitDelayImage] = useState(5);
+  const [socks5Proxy, setSocks5Proxy] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -25,6 +26,7 @@ export const QueueSettings: React.FC = () => {
         setRateLimitDelayAI(data.rate_limit_delay_ai || 60);
         setRateLimitDelayTTS(data.rate_limit_delay_tts || 5);
         setRateLimitDelayImage(data.rate_limit_delay_image || 5);
+        setSocks5Proxy(data.socks5_proxy || '');
       }
     } catch (err) {
       console.error('Failed to fetch queue settings:', err);
@@ -70,7 +72,8 @@ export const QueueSettings: React.FC = () => {
         body: JSON.stringify({ 
           rate_limit_delay_ai: rateLimitDelayAI,
           rate_limit_delay_tts: rateLimitDelayTTS,
-          rate_limit_delay_image: rateLimitDelayImage
+          rate_limit_delay_image: rateLimitDelayImage,
+          socks5_proxy: socks5Proxy
         })
       });
       if (res.ok) {
@@ -78,7 +81,8 @@ export const QueueSettings: React.FC = () => {
         setRateLimitDelayAI(data.rate_limit_delay_ai);
         setRateLimitDelayTTS(data.rate_limit_delay_tts);
         setRateLimitDelayImage(data.rate_limit_delay_image);
-        setSuccessMsg('Queue processing delay intervals updated successfully.');
+        setSocks5Proxy(data.socks5_proxy || '');
+        setSuccessMsg('Queue processing configuration updated successfully.');
         setTimeout(() => setSuccessMsg(''), 3000);
       }
     } catch (err) {
@@ -185,6 +189,21 @@ export const QueueSettings: React.FC = () => {
                   Delay interval between image search & download tasks. Prevents hitting image API key limits and blocking.
                 </p>
               </div>
+            </div>
+
+            {/* SOCKS5 Proxy Configuration */}
+            <div className="flex flex-col gap-2 border-t border-white/5 pt-6">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">SOCKS5 Proxy Configuration</label>
+              <input 
+                type="text"
+                placeholder="e.g. socks5://127.0.0.1:1080 hoặc socks5://user:pass@host:port"
+                value={socks5Proxy}
+                onChange={(e) => setSocks5Proxy(e.target.value)}
+                className="w-full bg-[#0d1321]/60 border border-white/10 rounded-xl px-4 py-3 text-slate-200 text-sm font-bold focus:outline-none focus:border-indigo-500/50"
+              />
+              <p className="text-[10px] text-slate-500 leading-relaxed mt-1">
+                Lưu lượng tìm kiếm và tải ảnh minh họa qua CentralAuth sẽ được định tuyến thông qua proxy này để tránh bị chặn IP VPS. Để trống nếu muốn dùng mạng trực tiếp.
+              </p>
             </div>
 
             <button 

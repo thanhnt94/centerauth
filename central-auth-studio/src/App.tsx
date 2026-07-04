@@ -33,7 +33,8 @@ const App: React.FC = () => {
               <Route path="/admin/ai-failover" element={<AIFailoverManager />} />
               <Route path="/admin/queue" element={<QueueDashboard />} />
               <Route path="/admin/queue-settings" element={<QueueSettings />} />
-              <Route path="/admin/tts" element={<TTSConsole defaultTab="playground" />} />
+              <Route path="/admin/tts" element={<TTSConsole defaultTab="create" />} />
+              <Route path="/admin/tts-gallery" element={<TTSConsole defaultTab="gallery" />} />
               <Route path="/admin/tts-settings" element={<TTSConsole defaultTab="settings" />} />
               <Route path="/admin/image-search" element={<MediaConsole defaultTab="search" />} />
               <Route path="/admin/images" element={<MediaConsole defaultTab="library" />} />

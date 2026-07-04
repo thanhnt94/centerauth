@@ -4,7 +4,7 @@ import {
   History, LogOut, Menu, Bell,
   Database, RefreshCw, Bot, Activity,
   ChevronDown, ChevronRight, Key, Volume2, Sliders,
-  Image as ImageIcon, Search
+  Image as ImageIcon, Search, FileAudio
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -106,8 +106,9 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       key: 'tts',
       title: 'TTS Space',
       items: [
-        { icon: <Volume2 size={20} />, label: 'TTS Hub', path: '/admin/tts', color: 'text-indigo-400' },
-        { icon: <Key size={20} />, label: 'TTS Settings', path: '/admin/tts-settings', color: 'text-indigo-300' },
+        { icon: <Volume2 size={20} />, label: 'TTS Create', path: '/admin/tts', color: 'text-indigo-400' },
+        { icon: <FileAudio size={20} />, label: 'TTS Gallery', path: '/admin/tts-gallery', color: 'text-indigo-300' },
+        { icon: <Key size={20} />, label: 'TTS Settings', path: '/admin/tts-settings', color: 'text-indigo-400' },
       ]
     });
 

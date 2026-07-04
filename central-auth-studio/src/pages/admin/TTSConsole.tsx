@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Volume2, Play, Pause, Download, Trash2, 
-  Activity, Loader2, FileAudio, RefreshCw, Check
+  Activity, Loader2, FileAudio, RefreshCw, Check, Copy
 } from 'lucide-react';
 
 interface TTSFile {
@@ -9,6 +9,7 @@ interface TTSFile {
   size_bytes: number;
   created_at: string;
   url: string;
+  text?: string;
 }
 
 interface TTSSettings {
@@ -32,11 +33,11 @@ const EDGE_VOICES_MAP = {
 };
 
 interface TTSConsoleProps {
-  defaultTab?: 'playground' | 'settings';
+  defaultTab?: 'create' | 'gallery' | 'settings';
 }
 
-export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'playground' }) => {
-  const [activeTab, setActiveTab] = useState<'playground' | 'settings'>(defaultTab);
+export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' }) => {
+  const [activeTab, setActiveTab] = useState<'create' | 'gallery' | 'settings'>(defaultTab);
 
   useEffect(() => {
     setActiveTab(defaultTab);
@@ -50,6 +51,7 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'playground
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<TTSFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [copiedFile, setCopiedFile] = useState<string | null>(null);
   
   // Player State
   const [playingFile, setPlayingFile] = useState<string | null>(null);
@@ -169,6 +171,13 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'playground
     }
   };
 
+  const handleCopyPath = (url: string, filename: string) => {
+    const fullUrl = window.location.origin + url;
+    navigator.clipboard.writeText(fullUrl);
+    setCopiedFile(filename);
+    setTimeout(() => setCopiedFile(null), 2000);
+  };
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSettingsSaving(true);
@@ -207,12 +216,14 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'playground
         <div>
           <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
             <Volume2 className="text-indigo-500" size={32} />
-            {activeTab === 'playground' ? 'TTS Speech Synthesizer' : 'TTS Configuration'}
+            {activeTab === 'create' ? 'TTS Speech Synthesizer' : activeTab === 'gallery' ? 'TTS Cache Gallery' : 'TTS Configuration'}
           </h2>
           <p className="text-slate-400 mt-2">
-            {activeTab === 'playground' 
+            {activeTab === 'create' 
               ? 'Test premium Text-to-Speech voices and preview output clips.' 
-              : 'Configure default voices per language and worker batch details.'}
+              : activeTab === 'gallery'
+                ? 'Manage and preview cached synthesized speech clips.'
+                : 'Configure default voices per language and worker batch details.'}
           </p>
         </div>
       </div>
@@ -224,179 +235,217 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'playground
         className="hidden" 
       />
 
-      {activeTab === 'playground' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Synthesizer Workspace */}
-          <div className="lg:col-span-2 bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">
-            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Synthesizer</h3>
-            
-            <form onSubmit={handleSynthesize} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Engine selection */}
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">TTS Engine</label>
-                  <select
-                    value={selectedEngine}
-                    onChange={(e) => setSelectedEngine(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
-                  >
-                    <option value="edge">Microsoft Edge TTS (Premium Neural)</option>
-                    <option value="gtts">Google TTS (gTTS Standard)</option>
-                  </select>
-                </div>
-
-                {/* Voice selection */}
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Voice & Language</label>
-                  <select
-                    value={selectedLang}
-                    onChange={(e) => setSelectedLang(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
-                  >
-                    {Object.entries(EDGE_VOICES_MAP).map(([key, info]) => (
-                      <option key={key} value={key}>
-                        {info.name} ({key.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Text Input */}
+      {activeTab === 'create' && (
+        <div className="max-w-3xl mx-auto bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">
+          <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Synthesizer</h3>
+          
+          <form onSubmit={handleSynthesize} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Engine selection */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Text Content</label>
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Enter text to speak, e.g. [ja:人生][vi:cuộc đời] or standard text blocks..."
-                  rows={6}
-                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-2xl p-6 text-sm text-white transition-all resize-none placeholder:text-slate-650"
-                  maxLength={1000}
-                />
-                <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1">
-                  <span>Supports multi-language segments using [lang:text] brackets.</span>
-                  <span>{inputText.length}/1000 chars</span>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-4">
-                <button
-                  type="submit"
-                  disabled={isSynthesizing || !inputText.trim()}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider py-4 px-6 rounded-2xl transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">TTS Engine</label>
+                <select
+                  value={selectedEngine}
+                  onChange={(e) => setSelectedEngine(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
                 >
-                  {isSynthesizing ? (
-                    <>
-                      <Loader2 className="animate-spin" size={16} />
-                      Synthesizing Speech...
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 size={16} />
-                      Generate Audio Speech
-                    </>
-                  )}
-                </button>
+                  <option value="edge">Microsoft Edge TTS (Premium Neural)</option>
+                  <option value="gtts">Google TTS (gTTS Standard)</option>
+                </select>
               </div>
-            </form>
 
-            {/* Generated output player */}
-            {playUrl && (
-              <div className="p-5 rounded-2xl bg-indigo-600/5 border border-indigo-600/20 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
-                    <FileAudio size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">Speech generated successfully!</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Click listen or download below.</p>
-                  </div>
-                </div>
-                
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handlePlayFile(playUrl, 'generated')}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
-                  >
-                    {playingFile === 'generated' ? <Pause size={14} /> : <Play size={14} />}
-                    Listen
-                  </button>
-                  <a 
-                    href={playUrl} 
-                    download
-                    className="bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 p-2.5 rounded-xl transition-all flex items-center"
-                  >
-                    <Download size={14} />
-                  </a>
-                </div>
+              {/* Voice selection */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Voice & Language</label>
+                <select
+                  value={selectedLang}
+                  onChange={(e) => setSelectedLang(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
+                >
+                  {Object.entries(EDGE_VOICES_MAP).map(([key, info]) => (
+                    <option key={key} value={key}>
+                      {info.name} ({key.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
-          </div>
-
-          {/* History / Cached Files */}
-          <div className="lg:col-span-1 bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 flex flex-col gap-6 h-[660px]">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Cached Audio</h3>
-              <button 
-                onClick={fetchHistory}
-                disabled={historyLoading}
-                className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all"
-                title="Refresh Cache List"
-              >
-                <RefreshCw className={historyLoading ? 'animate-spin' : ''} size={14} />
-              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
-              {history.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-600 font-bold text-xs gap-2 py-20">
-                  <FileAudio size={36} className="text-slate-700" />
-                  <span>No cached speech files.</span>
+            {/* Text Input */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Text Content</label>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Enter text to speak, e.g. [ja:人生][vi:cuộc đời] or standard text blocks..."
+                rows={6}
+                className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-2xl p-6 text-sm text-white transition-all resize-none placeholder:text-slate-650"
+                maxLength={1000}
+              />
+              <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1">
+                <span>Supports multi-language segments using [lang:text] brackets.</span>
+                <span>{inputText.length}/1000 chars</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-4">
+              <button
+                type="submit"
+                disabled={isSynthesizing || !inputText.trim()}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider py-4 px-6 rounded-2xl transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+              >
+                {isSynthesizing ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    Synthesizing Speech...
+                  </>
+                ) : (
+                  <>
+                    <Volume2 size={16} />
+                    Generate Audio Speech
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+
+          {/* Generated output player */}
+          {playUrl && (
+            <div className="p-5 rounded-2xl bg-indigo-600/5 border border-indigo-600/20 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
+                  <FileAudio size={20} />
                 </div>
-              ) : (
-                history.map((file) => (
-                  <div 
-                    key={file.filename}
-                    className={`p-4 rounded-2xl border flex items-center justify-between gap-3 transition-all
-                      ${playingFile === file.filename 
-                        ? 'bg-indigo-600/5 border-indigo-600/30' 
-                        : 'bg-slate-900/40 border-white/5'}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold text-white truncate" title={file.filename}>
-                        {file.filename}
-                      </p>
-                      <p className="text-[9px] text-slate-500 mt-1">
-                        {file.created_at} • {formatBytes(file.size_bytes)}
+                <div>
+                  <p className="text-xs font-bold text-white">Speech generated successfully!</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Click listen or download below.</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handlePlayFile(playUrl, 'generated')}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  {playingFile === 'generated' ? <Pause size={14} /> : <Play size={14} />}
+                  Listen
+                </button>
+                <a 
+                  href={playUrl} 
+                  download
+                  className="bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 p-2.5 rounded-xl transition-all flex items-center"
+                >
+                  <Download size={14} />
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'gallery' && (
+        <div className="bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">TTS Audio Gallery</h3>
+            <button 
+              onClick={fetchHistory}
+              disabled={historyLoading}
+              className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-slate-300 transition-all flex items-center gap-2 text-xs font-bold"
+            >
+              <RefreshCw className={historyLoading ? 'animate-spin' : ''} size={14} />
+              Refresh Gallery
+            </button>
+          </div>
+
+          {historyLoading && history.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="animate-spin text-indigo-500" size={32} />
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Loading gallery...</span>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="py-24 text-center text-slate-500 space-y-3">
+              <FileAudio size={48} className="mx-auto text-slate-700" />
+              <p className="text-sm font-bold">No synthesized TTS audios found.</p>
+              <p className="text-xs text-slate-600">Go to TTS Create to generate your first audio.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {history.map((file) => (
+                <div 
+                  key={file.filename}
+                  className={`p-6 rounded-2xl border transition-all flex flex-col justify-between gap-4
+                    ${playingFile === file.filename 
+                      ? 'bg-indigo-600/5 border-indigo-600/30 shadow-lg shadow-indigo-600/5' 
+                      : 'bg-slate-900/40 border-white/5 hover:border-white/10'}`}
+                >
+                  <div className="space-y-3">
+                    {/* Audio prompt/text */}
+                    <div className="p-3 bg-slate-950/30 rounded-xl border border-white/5 min-h-[4rem] flex flex-col justify-center">
+                      <p className="text-sm text-white font-medium line-clamp-3 leading-relaxed break-words">
+                        {file.text || <span className="text-slate-600 italic">No text content cached</span>}
                       </p>
                     </div>
+                    
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-slate-500 truncate" title={file.filename}>
+                        File: {file.filename}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Created: {file.created_at} • Size: {formatBytes(file.size_bytes)}
+                      </p>
+                    </div>
+                  </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center justify-between border-t border-white/5 pt-4">
+                    <button
+                      onClick={() => handlePlayFile(file.url, file.filename)}
+                      className={`px-4 py-2 rounded-xl transition-all font-bold text-xs flex items-center gap-1.5
+                        ${playingFile === file.filename 
+                          ? 'bg-indigo-600 text-white' 
+                          : 'bg-white/5 text-slate-300 hover:bg-white/10 border border-white/5'}`}
+                    >
+                      {playingFile === file.filename ? (
+                        <>
+                          <Pause size={14} />
+                          Pause
+                        </>
+                      ) : (
+                        <>
+                          <Play size={14} />
+                          Listen
+                        </>
+                      )}
+                    </button>
+
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handlePlayFile(file.url, file.filename)}
-                        className={`p-2 rounded-xl transition-all
-                          ${playingFile === file.filename 
-                            ? 'bg-indigo-600 text-white' 
-                            : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}
+                        onClick={() => handleCopyPath(file.url, file.filename)}
+                        className={`p-2 rounded-xl border transition-all flex items-center justify-center
+                          ${copiedFile === file.filename
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'}`}
+                        title="Copy Path"
                       >
-                        {playingFile === file.filename ? <Pause size={12} /> : <Play size={12} />}
+                        {copiedFile === file.filename ? <Check size={14} /> : <Copy size={14} />}
                       </button>
                       <button
                         onClick={() => handleDeleteFile(file.filename)}
                         className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl transition-all"
+                        title="Delete Clip"
                       >
-                        <Trash2 size={12} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
-      ) : (
-        /* Tab 2: Settings & Queue Monitor */
+      )}
+
+      {activeTab === 'settings' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Settings form */}
           <form onSubmit={handleSaveSettings} className="lg:col-span-2 bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">

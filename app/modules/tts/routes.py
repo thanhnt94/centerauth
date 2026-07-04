@@ -1,10 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict
 import os
 import json
 import time
+from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 
+from app.core.db import get_db
+from app.modules.tts.models import TTSCache
 from app.modules.tts.services import AudioGenerator
 
 router = APIRouter(prefix="/api/tts", tags=["TTS"])
@@ -30,20 +35,30 @@ def get_settings_file_path() -> str:
     return os.path.join(base_dir, "core", "tts_settings.json")
 
 @router.post("/generate")
-async def generate_tts_endpoint(data: TTSGenerateRequest):
+async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Depends(get_db)):
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text content cannot be empty")
         
+    prompt_hash = AudioGenerator.get_voice_hash(text)
+    
+    # Check cache table
+    res = await db.execute(select(TTSCache).where(TTSCache.prompt_hash == prompt_hash))
+    cache_item = res.scalar_one_or_none()
+    
     # Setup paths
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
     os.makedirs(upload_dir, exist_ok=True)
     
-    filename = f"tts_{AudioGenerator.get_voice_hash(text)}.mp3"
+    filename = f"tts_{prompt_hash}.mp3"
     physical_path = os.path.join(upload_dir, filename)
     url = f"/static/uploads/tts/{filename}"
     
+    # If in DB and exists on disk, reuse it immediately
+    if cache_item and os.path.exists(physical_path):
+        return {"url": url, "filename": filename, "cached": True}
+        
     # Generate if not exists
     if not os.path.exists(physical_path):
         try:
@@ -53,32 +68,51 @@ async def generate_tts_endpoint(data: TTSGenerateRequest):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
             
-    return {"url": url, "filename": filename}
+    # Add record to DB cache
+    if not cache_item:
+        try:
+            cache_item = TTSCache(
+                prompt_hash=prompt_hash,
+                text=text,
+                file_path=url,
+                created_at=datetime.utcnow()
+            )
+            db.add(cache_item)
+            await db.commit()
+        except Exception as db_err:
+            await db.rollback()
+            # In case of concurrency insert clash, just ignore
+            pass
+            
+    return {"url": url, "filename": filename, "cached": False}
 
 @router.get("/history")
-async def get_tts_history():
+async def get_tts_history(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(TTSCache).order_by(TTSCache.created_at.desc()))
+    items = res.scalars().all()
+    
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
-    if not os.path.exists(upload_dir):
-        return []
-        
+    
     history = []
-    for f in os.listdir(upload_dir):
-        if f.endswith(".mp3"):
-            path = os.path.join(upload_dir, f)
-            stat = os.stat(path)
-            history.append({
-                "filename": f,
-                "size_bytes": stat.st_size,
-                "created_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime)),
-                "url": f"/static/uploads/tts/{f}"
-            })
-    # Sort by created time descending
-    history.sort(key=lambda x: x["created_at"], reverse=True)
+    for item in items:
+        filename = os.path.basename(item.file_path)
+        physical_path = os.path.join(upload_dir, filename)
+        size_bytes = 0
+        if os.path.exists(physical_path):
+            size_bytes = os.path.getsize(physical_path)
+            
+        history.append({
+            "filename": filename,
+            "text": item.text,
+            "size_bytes": size_bytes,
+            "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "url": item.file_path
+        })
     return history
 
 @router.delete("/history/{filename}")
-async def delete_tts_file(filename: str):
+async def delete_tts_file(filename: str, db: AsyncSession = Depends(get_db)):
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
     
@@ -86,6 +120,10 @@ async def delete_tts_file(filename: str):
     if "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
         
+    url = f"/static/uploads/tts/{filename}"
+    await db.execute(delete(TTSCache).where(TTSCache.file_path == url))
+    await db.commit()
+    
     physical_path = os.path.join(upload_dir, filename)
     if os.path.exists(physical_path):
         try:
@@ -94,7 +132,7 @@ async def delete_tts_file(filename: str):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
     else:
-        raise HTTPException(status_code=404, detail="File not found")
+        return {"success": True, "message": "Metadata deleted, file was not on disk"}
 
 @router.get("/settings")
 async def get_tts_settings():

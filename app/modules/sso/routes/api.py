@@ -26,7 +26,8 @@ async def exchange_token(request: Request, db: AsyncSession = Depends(get_db)):
     token = JWTService.create_token({
         "sub": user.id,
         "username": user.username,
-        "email": user.email
+        "email": user.email,
+        "client_id": client_id
     })
     
     return {
@@ -50,11 +51,38 @@ async def verify_token(request: Request, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
+    # Resolve client-specific role
+    client_id_val = payload.get("client_id")
+    client_role = "user"
+    if client_id_val:
+        from app.modules.clients.models import Client
+        from app.modules.identity.models import UserClientRole
+        from sqlalchemy import select
+        
+        client_res = await db.execute(select(Client).where(Client.client_id == client_id_val))
+        client_obj = client_res.scalar_one_or_none()
+        if client_obj:
+            role_res = await db.execute(
+                select(UserClientRole)
+                .where(UserClientRole.user_id == user.id)
+                .where(UserClientRole.client_id == client_obj.id)
+            )
+            role_obj = role_res.scalar_one_or_none()
+            if role_obj:
+                client_role = role_obj.role
+            else:
+                client_role = "admin" if user.is_admin else "user"
+        else:
+            client_role = "admin" if user.is_admin else "user"
+    else:
+        client_role = "admin" if user.is_admin else "user"
+        
     return {
         "valid": True,
         "user": {
             "id": user.id,
             "username": user.username,
-            "email": user.email
+            "email": user.email,
+            "role": client_role
         }
     }

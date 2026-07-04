@@ -95,6 +95,8 @@ async def add_client(request: Request, db: AsyncSession = Depends(get_db)):
     # Standardized derivation
     redirect_uri = f"{app_url}/auth-center/callback"
     
+    available_roles = data.get("available_roles") or "user,admin"
+    
     new_client = Client(
         name=name,
         client_id=client_id,
@@ -102,7 +104,8 @@ async def add_client(request: Request, db: AsyncSession = Depends(get_db)):
         app_url=app_url,
         redirect_uri=redirect_uri,
         is_active=True,
-        is_visible_on_portal=True
+        is_visible_on_portal=True,
+        available_roles=available_roles
     )
     
     db.add(new_client)
@@ -519,6 +522,52 @@ async def delete_user_by_id(user_id: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
     return {"success": True, "message": "User deleted successfully"}
 
+@router.get("/users/{user_id}/client-roles")
+async def get_user_client_roles(user_id: int, db: AsyncSession = Depends(get_db)):
+    from app.modules.identity.models import UserClientRole
+    result = await db.execute(select(UserClientRole).where(UserClientRole.user_id == user_id))
+    roles = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "client_id": r.client_id,
+            "role": r.role,
+            "created_at": r.created_at.isoformat() if r.created_at else None
+        }
+        for r in roles
+    ]
+
+@router.post("/users/{user_id}/client-roles")
+async def set_user_client_role(user_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    data = await request.json()
+    client_id = data.get("client_id")
+    role = data.get("role")
+    
+    if client_id is None or not role:
+        raise HTTPException(status_code=400, detail="client_id and role are required")
+        
+    from app.modules.identity.models import UserClientRole
+    # Check if exists
+    result = await db.execute(
+        select(UserClientRole)
+        .where(UserClientRole.user_id == user_id)
+        .where(UserClientRole.client_id == client_id)
+    )
+    existing = result.scalar_one_or_none()
+    
+    if existing:
+        existing.role = role
+    else:
+        new_role = UserClientRole(
+            user_id=user_id,
+            client_id=client_id,
+            role=role
+        )
+        db.add(new_role)
+        
+    await db.commit()
+    return {"success": True, "message": "Client role updated successfully"}
+
 from pydantic import BaseModel
 import httpx
 import urllib.parse
@@ -568,6 +617,7 @@ async def update_client(client_id: int, request: Request, db: AsyncSession = Dep
     client.name = data.get("name", client.name)
     client.client_secret = data.get("client_secret", client.client_secret)
     client.app_url = data.get("app_url", client.app_url)
+    client.available_roles = data.get("available_roles", client.available_roles)
     
     # Optional logic for dynamic redirect uri
     redirect_uri = data.get("redirect_uri")

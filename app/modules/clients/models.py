@@ -16,6 +16,7 @@ class Client(Base):
     app_color_theme = Column(String(50), default="indigo")
     is_active = Column(Boolean, default=True)
     is_visible_on_portal = Column(Boolean, default=True)
+    available_roles = Column(String(500), nullable=True, default="user,admin")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -30,5 +31,6 @@ class Client(Base):
             "app_description": self.app_description,
             "app_color_theme": self.app_color_theme,
             "is_active": self.is_active,
-            "is_visible_on_portal": self.is_visible_on_portal
+            "is_visible_on_portal": self.is_visible_on_portal,
+            "available_roles": self.available_roles
         }

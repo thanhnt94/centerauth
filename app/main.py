@@ -66,6 +66,16 @@ async def lifespan(app: FastAPI):
                     print(f"[MIGRATION] Added {col_name} column to users table.")
         except Exception as migration_error:
             print(f"[MIGRATION ERROR] Failed to migrate users table: {migration_error}")
+
+        # SQLite dynamic column migration check for available_roles in clients table
+        try:
+            res_clients = await conn.execute(text("PRAGMA table_info(clients)"))
+            client_columns = [row[1] for row in res_clients.fetchall()]
+            if "available_roles" not in client_columns:
+                await conn.execute(text("ALTER TABLE clients ADD COLUMN available_roles VARCHAR(500) DEFAULT 'user,admin'"))
+                print("[MIGRATION] Added available_roles column to clients table.")
+        except Exception as client_migration_error:
+            print(f"[MIGRATION ERROR] Failed to migrate clients table: {client_migration_error}")
             
     # 2. Create tables for AIChat DB
     async with aichat_engine.begin() as conn:

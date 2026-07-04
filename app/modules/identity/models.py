@@ -62,3 +62,12 @@ class User(Base):
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
+
+class UserClientRole(Base):
+    __tablename__ = "user_client_roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    client_id = Column(Integer, nullable=False, index=True)
+    role = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

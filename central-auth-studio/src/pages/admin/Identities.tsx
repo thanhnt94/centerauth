@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   Search, Shield, Mail, Calendar, 
   Trash2, Edit2, UserPlus, Fingerprint,
-  UserCheck, Activity, X, CheckCircle2
+  UserCheck, Activity, X, CheckCircle2, Rocket
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { User } from '../../types';
@@ -22,6 +22,52 @@ export const Identities: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('user');
   const [newIsActive, setNewIsActive] = useState(true);
+
+  // Satellite roles states
+  const [clients, setClients] = useState<any[]>([]);
+  const [assignedRoles, setAssignedRoles] = useState<{ [clientId: number]: string }>({});
+
+  const handleOpenEditModal = async (user: User) => {
+    setSelectedUser(user);
+    setIsEditModalOpen(true);
+    setAdminResetPassword('');
+    try {
+      const resClients = await fetch('/admin/api/clients');
+      if (resClients.ok) {
+        const data = await resClients.json();
+        setClients(data);
+      }
+      const resRoles = await fetch(`/admin/api/users/${user.id}/client-roles`);
+      if (resRoles.ok) {
+        const data = await resRoles.json();
+        const roleMap: { [clientId: number]: string } = {};
+        data.forEach((r: any) => {
+          roleMap[r.client_id] = r.role;
+        });
+        setAssignedRoles(roleMap);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRoleChange = async (clientId: number, role: string) => {
+    if (!selectedUser) return;
+    try {
+      const res = await fetch(`/admin/api/users/${selectedUser.id}/client-roles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, role })
+      });
+      if (res.ok) {
+        setAssignedRoles(prev => ({ ...prev, [clientId]: role }));
+      } else {
+        alert('Không thể cập nhật quyền vệ tinh');
+      }
+    } catch (err) {
+      alert('Lỗi kết nối');
+    }
+  };
 
   const fetchUsers = () => {
     setLoading(true);
@@ -131,7 +177,7 @@ export const Identities: React.FC = () => {
                 </td>
                 <td className="px-10 py-8 text-right">
                   <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform group-hover:translate-x-0 translate-x-4">
-                    <button onClick={() => { setSelectedUser(user); setIsEditModalOpen(true); }} className="p-3 rounded-2xl bg-white/5 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-all"><Edit2 size={16} /></button>
+                    <button onClick={() => handleOpenEditModal(user)} className="p-3 rounded-2xl bg-white/5 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-all"><Edit2 size={16} /></button>
                     <button 
                       onClick={async () => {
                         if (confirm(`Bạn có chắc chắn muốn xóa user ${user.username} không?`)) {
@@ -245,6 +291,44 @@ export const Identities: React.FC = () => {
                       </select>
                     </div>
                   </div>
+
+                  {/* Satellite specific roles */}
+                  {clients.length > 0 && (
+                    <div className="space-y-3 pt-4 border-t border-white/5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Satellite Roles / Tiers</label>
+                      <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                        {clients.map(client => {
+                          const available = client.available_roles 
+                            ? client.available_roles.split(',').map((r: string) => r.trim())
+                            : ['user', 'admin'];
+                          const currentRole = assignedRoles[client.id] || 'user';
+                          
+                          return (
+                            <div key={client.id} className="flex items-center justify-between bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400">
+                                  <Rocket size={16} />
+                                </div>
+                                <div className="text-left">
+                                  <p className="text-xs font-bold text-white">{client.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-medium">{client.app_url || 'No URL'}</p>
+                                </div>
+                              </div>
+                              <select 
+                                value={currentRole}
+                                onChange={(e) => handleRoleChange(client.id, e.target.value)}
+                                className="bg-slate-900 border border-white/10 rounded-xl py-2 px-3 text-xs font-bold text-white focus:border-indigo-500 outline-none"
+                              >
+                                {available.map((r: string) => (
+                                  <option key={r} value={r}>{r.toUpperCase()}</option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-1.5 pt-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400 ml-2">Reset Password (Leave blank to keep current)</label>

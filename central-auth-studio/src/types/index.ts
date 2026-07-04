@@ -23,6 +23,7 @@ export interface Client {
   app_color_theme: string;
   is_visible_on_portal: boolean;
   is_active: boolean;
+  available_roles?: string;
   created_at: string;
 }
 

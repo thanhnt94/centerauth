@@ -14,6 +14,7 @@ interface TTSFile {
 
 interface TTSSettings {
   default_engine: string;
+  google_api_key?: string;
   default_voices: Record<string, string>;
   queue_worker_delay_seconds: number;
   queue_max_retries: number;
@@ -60,6 +61,7 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
   // Settings State
   const [settings, setSettings] = useState<TTSSettings>({
     default_engine: 'edge',
+    google_api_key: '',
     default_voices: {
       vi: 'vi-VN-HoaiMyNeural',
       en: 'en-US-AriaNeural',
@@ -199,6 +201,37 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
     } finally {
       setSettingsSaving(false);
     }
+  };
+
+  const handleVoiceMappingChange = (oldTag: string, newTag: string, voiceValue: string) => {
+    const updated = { ...settings.default_voices };
+    if (oldTag !== newTag) {
+      delete updated[oldTag];
+    }
+    updated[newTag] = voiceValue;
+    setSettings({ ...settings, default_voices: updated });
+  };
+
+  const handleAddVoiceMapping = () => {
+    let counter = 1;
+    let newTag = `custom-${counter}`;
+    while (newTag in settings.default_voices) {
+      counter++;
+      newTag = `custom-${counter}`;
+    }
+    setSettings({
+      ...settings,
+      default_voices: {
+        ...settings.default_voices,
+        [newTag]: ''
+      }
+    });
+  };
+
+  const handleRemoveVoiceMapping = (tag: string) => {
+    const updated = { ...settings.default_voices };
+    delete updated[tag];
+    setSettings({ ...settings, default_voices: updated });
   };
 
   const formatBytes = (bytes: number) => {
@@ -461,7 +494,8 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                   className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
                 >
                   <option value="edge">Microsoft Edge TTS (Premium Neural)</option>
-                  <option value="gtts">Google TTS (gTTS Standard)</option>
+                  <option value="gtts">Google Translate (gTTS Free)</option>
+                  <option value="google">Google Cloud TTS (Premium Neural2/Wavenet)</option>
                 </select>
               </div>
 
@@ -477,29 +511,72 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                   className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white"
                 />
               </div>
+
+              {/* Google Cloud API Key (Conditionally visible) */}
+              {settings.default_engine === 'google' && (
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Google Cloud API Key</label>
+                  <input
+                    type="password"
+                    value={settings.google_api_key || ''}
+                    onChange={(e) => setSettings({ ...settings, google_api_key: e.target.value })}
+                    placeholder="AIzaSy..."
+                    className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white font-mono"
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Default Mapped Voices */}
+            {/* Dynamic Mapped Voices */}
             <div className="space-y-4">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Mapped Voices Configuration</h4>
+              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Mapped Voices Configuration</h4>
+                <button
+                  type="button"
+                  onClick={handleAddVoiceMapping}
+                  className="bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-650/20 text-indigo-400 hover:text-indigo-300 text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-lg transition-all"
+                >
+                  + Add Voice Mapping
+                </button>
+              </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(EDGE_VOICES_MAP).slice(0, 4).map(([lang, info]) => (
-                  <div key={lang}>
-                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">
-                      {info.name} Voice String
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.default_voices[lang] || info.code}
-                      onChange={(e) => {
-                        const updatedVoices = { ...settings.default_voices, [lang]: e.target.value };
-                        setSettings({ ...settings, default_voices: updatedVoices });
-                      }}
-                      className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2.5 px-3.5 text-xs text-white font-mono"
-                    />
-                  </div>
-                ))}
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {Object.entries(settings.default_voices).length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No voice mappings configured. Add a mapping to translate tags in prompts to synthesized voices.</p>
+                ) : (
+                  Object.entries(settings.default_voices).map(([tag, voice]) => (
+                    <div key={tag} className="flex items-center gap-3 bg-slate-900/30 p-3 rounded-xl border border-white/5">
+                      <div className="w-1/4">
+                        <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Prompt Tag</label>
+                        <input
+                          type="text"
+                          value={tag}
+                          onChange={(e) => handleVoiceMappingChange(tag, e.target.value, voice)}
+                          placeholder="e.g. ja-1"
+                          className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2 px-3 text-xs text-white font-bold"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Voice String</label>
+                        <input
+                          type="text"
+                          value={voice}
+                          onChange={(e) => handleVoiceMappingChange(tag, tag, e.target.value)}
+                          placeholder="e.g. ja-JP-KeitaNeural or vi-VN-Neural2-A"
+                          className="w-full bg-slate-900 border border-white/10 focus:border-indigo-500 outline-none rounded-lg py-2 px-3 text-xs text-white font-mono"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVoiceMapping(tag)}
+                        className="mt-4 p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition-all"
+                        title="Remove Mapping"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

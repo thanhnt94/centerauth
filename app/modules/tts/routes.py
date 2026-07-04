@@ -20,6 +20,7 @@ class TTSGenerateRequest(BaseModel):
 
 class TTSSettings(BaseModel):
     default_engine: str = "edge"
+    google_api_key: Optional[str] = ""
     default_voices: Dict[str, str] = {
         "vi": "vi-VN-HoaiMyNeural",
         "en": "en-US-AriaNeural",
@@ -107,7 +108,7 @@ async def get_tts_history(db: AsyncSession = Depends(get_db)):
             "text": item.text,
             "size_bytes": size_bytes,
             "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            "url": item.file_path
+            "url": f"/static/uploads/tts/{filename}"
         })
     return history
 

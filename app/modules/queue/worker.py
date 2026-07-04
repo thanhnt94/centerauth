@@ -479,11 +479,11 @@ async def start_tts_queue_worker():
                                 cache_item = TTSCache(
                                     prompt_hash=prompt_hash,
                                     text=task.prompt,
-                                    file_path=physical_path
+                                    file_path=f"/static/uploads/tts/{filename}"
                                 )
                                 db.add(cache_item)
                             else:
-                                cache_item.file_path = physical_path
+                                cache_item.file_path = f"/static/uploads/tts/{filename}"
                             await db.flush()
                         except Exception as cache_db_err:
                             await db.rollback()

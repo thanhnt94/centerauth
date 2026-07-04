@@ -5,11 +5,14 @@ import asyncio
 import edge_tts
 from gtts import gTTS
 import logging
+import json
+import base64
+import httpx
 
 logger = logging.getLogger(__name__)
 
 class AudioGenerator:
-    PROMPT_REGEX = re.compile(r'^\s*([a-z]{2})(?:\(([mf])\))?:\s*(.+)$', re.MULTILINE)
+    PROMPT_REGEX = re.compile(r'^\s*([a-zA-Z0-9_-]+):\s*(.+)$', re.MULTILINE)
     
     # Premium Microsoft Edge TTS Voices mapping
     EDGE_VOICES = {
@@ -33,7 +36,7 @@ class AudioGenerator:
         segments = []
         
         # Check if text is in bracket format, e.g., [ja:人生][vi:cuộc đời]
-        bracket_matches = re.findall(r'\[([a-z]{2,3}(?:-[a-zA-Z0-9]+)?):\s*([^\]]+)\]', text)
+        bracket_matches = re.findall(r'\[([a-zA-Z0-9_-]+):\s*([^\]]+)\]', text)
         if bracket_matches:
             for lang, content in bracket_matches:
                 segments.append({
@@ -53,7 +56,7 @@ class AudioGenerator:
             match = AudioGenerator.PROMPT_REGEX.match(line)
             if match:
                 lang = match.group(1)
-                content = match.group(3)
+                content = match.group(2) # Group 2 contains text now since we simplified regex
                 current_lang = lang
                 segments.append({
                     'text': content.strip(),
@@ -68,10 +71,60 @@ class AudioGenerator:
         return segments
 
     @classmethod
+    async def generate_google_cloud_tts(cls, text: str, lang: str, api_key: str, output_path: str, voice_name: str = None) -> bool:
+        try:
+            if not voice_name:
+                # Map standard languages to Google Cloud TTS voices (Neural2 is premium and very high quality)
+                voice_map = {
+                    "vi": "vi-VN-Neural2-A",
+                    "en": "en-US-Neural2-H",
+                    "ja": "ja-JP-Neural2-C",
+                    "zh": "zh-CN-Neural2-C",
+                    "ko": "ko-KR-Neural2-A",
+                    "fr": "fr-FR-Neural2-B",
+                    "de": "de-DE-Neural2-F",
+                    "es": "es-ES-Neural2-F",
+                    "ru": "ru-RU-Wavenet-A",
+                    "it": "it-IT-Neural2-C"
+                }
+                base_lang = lang.split('-')[0].lower()
+                voice_name = voice_map.get(base_lang, "en-US-Neural2-H")
+
+            lang_code = lang
+            if voice_name and len(voice_name.split("-")) >= 2:
+                lang_code = "-".join(voice_name.split("-")[:2])
+
+            url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
+            payload = {
+                "input": {"text": text},
+                "voice": {
+                    "languageCode": lang_code,
+                    "name": voice_name
+                },
+                "audioConfig": {
+                    "audioEncoding": "MP3"
+                }
+            }
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, timeout=20.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    audio_content = data.get("audioContent")
+                    if audio_content:
+                        with open(output_path, "wb") as f:
+                            f.write(base64.b64decode(audio_content))
+                        logger.info(f"[TTS GOOGLE CLOUD SUCCESS] Synthesized lang '{lang}' using voice '{voice_name}'")
+                        return True
+                logger.error(f"[TTS GOOGLE CLOUD ERROR] API responded {response.status_code}: {response.text}")
+        except Exception as e:
+            logger.error(f"[TTS GOOGLE CLOUD EXCEPTION] {e}")
+        return False
+
+    @classmethod
     async def generate_tts(cls, text: str, output_path: str) -> bool:
         """
-        Generates premium TTS audio file using Microsoft Edge TTS as primary,
-        falling back to Google TTS (gTTS) if Edge TTS fails or voice is unsupported.
+        Generates premium TTS audio file using Google Cloud TTS (if configured),
+        Microsoft Edge TTS as primary fallback, and Google TTS (gTTS) as secondary fallback.
         Supports multi-language segments and merges them if pydub is available.
         """
         try:
@@ -82,6 +135,23 @@ class AudioGenerator:
                 if p not in current_path:
                     current_path += os.pathsep + p
             os.environ["PATH"] = current_path
+
+            # Load settings
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            settings_path = os.path.join(base_dir, "core", "tts_settings.json")
+            tts_engine = "edge"
+            google_key = ""
+            default_voices = {}
+            
+            if os.path.exists(settings_path):
+                try:
+                    with open(settings_path, "r", encoding="utf-8") as sf:
+                        config_data = json.load(sf)
+                        tts_engine = config_data.get("default_engine", "edge")
+                        google_key = config_data.get("google_api_key", "")
+                        default_voices = config_data.get("default_voices", {})
+                except Exception:
+                    pass
 
             segments = cls.parse_segments(text)
             if not segments:
@@ -95,7 +165,7 @@ class AudioGenerator:
             
             for i, seg in enumerate(segments):
                 if i > 0:
-                    await asyncio.sleep(0.25) # Pace requests to avoid rate-limiting from Edge TTS servers
+                    await asyncio.sleep(0.25) # Pace requests to avoid rate-limiting
                 
                 seg_text = seg['text']
                 if not seg_text.strip():
@@ -107,48 +177,52 @@ class AudioGenerator:
                 fd, temp_path = tempfile.mkstemp(suffix=f"_{i}.mp3")
                 os.close(fd)
                 
-                # Try Edge TTS first (Primary)
-                success_edge = False
-                voice_edge = cls.EDGE_VOICES.get(lang)
+                success_segment = False
                 
-                edge_err = None
-                if voice_edge:
-                    print(f"\n[TTS GENERATOR] [TRY EDGE] Attempting Microsoft Edge TTS for lang '{lang}' using voice '{voice_edge}'...")
-                    try:
-                        communicate = edge_tts.Communicate(seg_text, voice_edge)
-                        await communicate.save(temp_path)
-                        success_edge = True
-                        log_msg = f"[TTS GENERATOR] [SUCCESS EDGE] Microsoft Edge TTS generated successfully. Voice: '{voice_edge}' | Lang: '{lang}' | Segment: '{seg_text[:40]}...'"
-                        print(log_msg)
-                        logger.info(log_msg)
-                    except Exception as ee:
-                        edge_err = str(ee)
-                        msg = f"\n==================================================\n[TTS WARNING] Microsoft Edge TTS failed for voice '{voice_edge}'!\nSegment text: '{seg_text}'\nError details: {ee}\n=================================================="
-                        print(msg)
-                        logger.error(msg)
-                else:
-                    print(f"\n[TTS GENERATOR] No specific Edge TTS voice mapped for lang '{lang}' (supported keys: {list(cls.EDGE_VOICES.keys())})")
+                # Look up customized voice name from user settings
+                configured_voice = default_voices.get(lang)
                 
-                # Fallback to gTTS if Edge TTS failed or lang not supported
-                if not success_edge:
+                # Try Google Cloud TTS first if engine matches
+                if tts_engine == "google" and google_key.strip():
+                    print(f"\n[TTS GENERATOR] [TRY GOOGLE CLOUD] Attempting Google Cloud TTS for lang '{lang}'...")
+                    success_segment = await cls.generate_google_cloud_tts(seg_text, lang, google_key.strip(), temp_path, configured_voice)
+                    
+                # Try Edge TTS next (Primary Fallback or Default Engine)
+                if not success_segment:
+                    # Fallback to default mapped Edge voice if no custom voice is set for this lang tag
+                    voice_edge = configured_voice or cls.EDGE_VOICES.get(lang.split('-')[0].lower())
+                    edge_err = None
+                    if voice_edge:
+                        print(f"\n[TTS GENERATOR] [TRY EDGE] Attempting Microsoft Edge TTS for lang '{lang}' using voice '{voice_edge}'...")
+                        try:
+                            communicate = edge_tts.Communicate(seg_text, voice_edge)
+                            await communicate.save(temp_path)
+                            success_segment = True
+                            log_msg = f"[TTS GENERATOR] [SUCCESS EDGE] Microsoft Edge TTS generated successfully. Voice: '{voice_edge}' | Lang: '{lang}'"
+                            print(log_msg)
+                            logger.info(log_msg)
+                        except Exception as ee:
+                            edge_err = str(ee)
+                            logger.error(f"[TTS WARNING] Microsoft Edge TTS failed for voice '{voice_edge}': {ee}")
+                    
+                # Fallback to gTTS as final resort
+                if not success_segment:
                     print(f"[TTS GENERATOR] [TRY GTTS] Falling back to Google TTS (gTTS) for lang '{lang}'...")
                     try:
-                        # run gtts in thread since it's synchronous/blocking
+                        base_lang = lang.split('-')[0].lower()
                         def run_gtts():
-                            tts = gTTS(text=seg_text, lang=lang)
+                            tts = gTTS(text=seg_text, lang=base_lang)
                             tts.save(temp_path)
                         await asyncio.to_thread(run_gtts)
-                        log_msg = f"[TTS GENERATOR] [SUCCESS GTTS] Google TTS generated successfully. Lang: '{lang}' | Segment: '{seg_text[:40]}...'"
+                        success_segment = True
+                        log_msg = f"[TTS GENERATOR] [SUCCESS GTTS] Google TTS generated successfully. Lang: '{base_lang}'"
                         print(log_msg)
                         logger.info(log_msg)
                     except Exception as ge:
-                        msg = f"\n==================================================\n[TTS CRITICAL ERROR] Google TTS fallback also failed!\nSegment text: '{seg_text}'\nError details: {ge}\n=================================================="
-                        print(msg)
-                        logger.error(msg)
-                        # Clean up and exit if both failed
+                        logger.error(f"[TTS CRITICAL ERROR] Google TTS fallback also failed: {ge}")
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
-                        raise ValueError(f"Both Edge TTS and gTTS failed. Edge: {edge_err or 'No voice mapped'}. gTTS: {ge}")
+                        raise ValueError(f"All TTS engines failed for text segment '{seg_text[:20]}'")
                         
                 temp_files.append(temp_path)
                 

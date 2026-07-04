@@ -139,6 +139,15 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
         { icon: <Sliders size={20} />, label: 'Queue Settings', path: '/admin/queue-settings', color: 'text-emerald-300' }
       ]
     });
+
+    // Add Telegram section
+    sections.push({
+      key: 'telegram',
+      title: 'Telegram Space',
+      items: [
+        { icon: <Bot size={20} />, label: 'Telegram Console', path: '/admin/telegram', color: 'text-indigo-400' }
+      ]
+    });
   }
 
   // Auto-expand sections that have active items on location changes

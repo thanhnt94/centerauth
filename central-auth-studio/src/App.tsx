@@ -17,6 +17,7 @@ import { Logs } from './pages/admin/Logs';
 import { Settings as AdminSettings } from './pages/admin/Settings';
 import { Settings as UserSettings } from './pages/Settings';
 import { QueueSettings } from './pages/admin/QueueSettings';
+import { TelegramConsole } from './pages/admin/TelegramConsole';
 
 const App: React.FC = () => {
   return (
@@ -42,6 +43,7 @@ const App: React.FC = () => {
               <Route path="/admin/clients" element={<Clients />} />
               <Route path="/admin/users" element={<Identities />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/telegram" element={<TelegramConsole />} />
               <Route path="/settings" element={<UserSettings />} />
               <Route path="/admin/logs" element={<Logs />} />
               <Route path="/admin/sync" element={<SyncDashboard />} />

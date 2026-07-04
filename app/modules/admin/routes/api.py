@@ -749,3 +749,65 @@ async def get_logs(db: AsyncSession = Depends(get_db)):
         for log in logs_list
     ]
 
+@router.get("/telegram/configs")
+async def get_admin_telegram_configs(db: AsyncSession = Depends(get_db)):
+    from app.modules.queue.models import UserTelegramConfig
+    from app.modules.identity.models import User as UserDB
+    # Fetch all configs where telegram_chat_id is not null
+    result = await db.execute(
+        select(UserTelegramConfig, UserDB)
+        .join(UserDB, UserDB.id == UserTelegramConfig.user_id)
+        .where(UserTelegramConfig.telegram_chat_id != None)
+    )
+    rows = result.all()
+    return [
+        {
+            "id": config.id,
+            "user_id": config.user_id,
+            "username": user.username,
+            "email": user.email,
+            "telegram_chat_id": config.telegram_chat_id,
+            "reminder_time": config.reminder_time,
+            "is_active": config.is_active,
+            "created_at": config.created_at.isoformat() if config.created_at else None
+        }
+        for config, user in rows
+    ]
+
+@router.post("/telegram/broadcast")
+async def telegram_broadcast(request: Request, db: AsyncSession = Depends(get_db)):
+    data = await request.json()
+    target_chat_ids = data.get("chat_ids", [])  # List of chat IDs to send to (empty = all)
+    text = data.get("text", "").strip()
+    
+    if not text:
+        raise HTTPException(status_code=400, detail="Message text is required")
+        
+    from app.modules.queue.telegram_bot import bot
+    if not bot:
+        raise HTTPException(status_code=503, detail="Telegram bot is not currently active or initialized.")
+        
+    from app.modules.queue.models import UserTelegramConfig
+    if not target_chat_ids:
+        # Get all active chat IDs
+        res = await db.execute(
+            select(UserTelegramConfig.telegram_chat_id)
+            .where(UserTelegramConfig.telegram_chat_id != None)
+        )
+        target_chat_ids = [row[0] for row in res.all()]
+        
+    if not target_chat_ids:
+        return {"status": "ignored", "sent_count": 0, "message": "No connected Telegram members found."}
+        
+    sent_count = 0
+    failed_count = 0
+    for chat_id in target_chat_ids:
+        try:
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            sent_count += 1
+        except Exception as send_err:
+            logger.error(f"[TelegramAdmin] Broadcast failed for {chat_id}: {send_err}")
+            failed_count += 1
+            
+    return {"status": "success", "sent_count": sent_count, "failed_count": failed_count}
+

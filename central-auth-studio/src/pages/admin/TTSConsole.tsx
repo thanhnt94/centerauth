@@ -116,7 +116,8 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          lang: selectedLang
+          lang: selectedLang,
+          bypass_parsing: true
         })
       });
       if (res.ok) {

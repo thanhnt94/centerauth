@@ -540,6 +540,27 @@ async def start_image_queue_worker():
     from app.modules.media.services import MediaService
 
     while True:
+        is_paused = False
+        delay_image = 5
+        try:
+            async with SessionLocal() as db:
+                from app.modules.admin.models import SystemSetting
+                # Check is_paused
+                res_paused = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_is_paused"))
+                paused_setting = res_paused.scalar_one_or_none()
+                is_paused = (paused_setting.value == "true") if paused_setting else False
+
+                # Check rate_limit_delay_image
+                res_delay_image = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_image"))
+                delay_setting_image = res_delay_image.scalar_one_or_none()
+                delay_image = int(delay_setting_image.value) if delay_setting_image else 5
+        except Exception as db_err:
+            logger.warning(f"[QueueWorker-Image] Failed to query system_settings: {db_err}")
+
+        if is_paused:
+            await asyncio.sleep(2)
+            continue
+
         try:
             async with SessionLocal(expire_on_commit=False) as db:
                 # Fetch oldest pending Image task
@@ -642,4 +663,4 @@ async def start_image_queue_worker():
         except Exception as loop_err:
             logger.error(f"[QueueWorker-Image] Unexpected loop error: {loop_err}", exc_info=True)
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(delay_image)

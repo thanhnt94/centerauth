@@ -5,6 +5,7 @@ export const QueueSettings: React.FC = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [rateLimitDelayAI, setRateLimitDelayAI] = useState(60);
   const [rateLimitDelayTTS, setRateLimitDelayTTS] = useState(5);
+  const [rateLimitDelayImage, setRateLimitDelayImage] = useState(5);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -23,6 +24,7 @@ export const QueueSettings: React.FC = () => {
         setIsPaused(data.is_paused);
         setRateLimitDelayAI(data.rate_limit_delay_ai || 60);
         setRateLimitDelayTTS(data.rate_limit_delay_tts || 5);
+        setRateLimitDelayImage(data.rate_limit_delay_image || 5);
       }
     } catch (err) {
       console.error('Failed to fetch queue settings:', err);
@@ -67,13 +69,15 @@ export const QueueSettings: React.FC = () => {
         headers,
         body: JSON.stringify({ 
           rate_limit_delay_ai: rateLimitDelayAI,
-          rate_limit_delay_tts: rateLimitDelayTTS
+          rate_limit_delay_tts: rateLimitDelayTTS,
+          rate_limit_delay_image: rateLimitDelayImage
         })
       });
       if (res.ok) {
         const data = await res.json();
         setRateLimitDelayAI(data.rate_limit_delay_ai);
         setRateLimitDelayTTS(data.rate_limit_delay_tts);
+        setRateLimitDelayImage(data.rate_limit_delay_image);
         setSuccessMsg('Queue processing delay intervals updated successfully.');
         setTimeout(() => setSuccessMsg(''), 3000);
       }
@@ -130,7 +134,7 @@ export const QueueSettings: React.FC = () => {
         <div>
           <h3 className="text-lg font-bold text-white mb-4">Throttling Delay Intervals</h3>
           <form onSubmit={handleSaveDelay} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">AI Text Generation Delay</label>
                 <div className="flex items-center gap-3 bg-[#0d1321]/60 border border-white/10 rounded-xl px-4 py-3 max-w-[200px]">
@@ -162,6 +166,23 @@ export const QueueSettings: React.FC = () => {
                 </div>
                 <p className="text-[10px] text-slate-500 leading-relaxed mt-1">
                   Delay interval between generating TTS voice files. Can be small since audio synthesis is generally fast and less rate-restricted.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Image Search Download Delay</label>
+                <div className="flex items-center gap-3 bg-[#0d1321]/60 border border-white/10 rounded-xl px-4 py-3 max-w-[200px]">
+                  <input 
+                    type="number"
+                    min="1"
+                    value={rateLimitDelayImage}
+                    onChange={(e) => setRateLimitDelayImage(parseInt(e.target.value) || 1)}
+                    className="bg-transparent border-none text-white text-sm font-black focus:outline-none w-full text-center"
+                  />
+                  <span className="text-xs font-bold text-slate-400">sec</span>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-relaxed mt-1">
+                  Delay interval between image search & download tasks. Prevents hitting image API key limits and blocking.
                 </p>
               </div>
             </div>

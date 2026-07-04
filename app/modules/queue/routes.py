@@ -296,10 +296,16 @@ async def get_queue_settings(
     delay_setting_tts = res_delay_tts.scalar_one_or_none()
     rate_limit_delay_tts = int(delay_setting_tts.value) if delay_setting_tts else 5
 
+    # Query rate_limit_delay_image
+    res_delay_image = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_image"))
+    delay_setting_image = res_delay_image.scalar_one_or_none()
+    rate_limit_delay_image = int(delay_setting_image.value) if delay_setting_image else 5
+
     return {
         "is_paused": is_paused,
         "rate_limit_delay_ai": rate_limit_delay_ai,
-        "rate_limit_delay_tts": rate_limit_delay_tts
+        "rate_limit_delay_tts": rate_limit_delay_tts,
+        "rate_limit_delay_image": rate_limit_delay_image
     }
 
 @router.post("/settings")
@@ -342,6 +348,18 @@ async def update_queue_settings(
                 db.add(SystemSetting(key="queue_rate_limit_delay_tts", value=str(delay_val), description="Delay interval between TTS tasks", category="Queue"))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid rate_limit_delay_tts")
+
+    if "rate_limit_delay_image" in data:
+        try:
+            delay_val = max(1, int(data["rate_limit_delay_image"]))
+            res_delay = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_rate_limit_delay_image"))
+            delay_setting = res_delay.scalar_one_or_none()
+            if delay_setting:
+                delay_setting.value = str(delay_val)
+            else:
+                db.add(SystemSetting(key="queue_rate_limit_delay_image", value=str(delay_val), description="Delay interval between image tasks", category="Queue"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid rate_limit_delay_image")
             
     await db.commit()
     return await get_queue_settings(db, _auth)

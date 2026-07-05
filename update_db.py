@@ -32,7 +32,20 @@ async def main():
                 print("telegram_settings_template column already exists.")
                 
         except Exception as e:
-            print(f"Error checking/adding columns: {e}")
+            print(f"Error checking/adding columns in clients: {e}")
+            
+        print("Checking columns in user_telegram_configs table...")
+        try:
+            res = await conn.execute(text("PRAGMA table_info(user_telegram_configs)"))
+            tg_columns = [row[1] for row in res.fetchall()]
+            if "settings" not in tg_columns:
+                print("Adding settings column to user_telegram_configs...")
+                await conn.execute(text("ALTER TABLE user_telegram_configs ADD COLUMN settings TEXT"))
+                print("settings column added successfully.")
+            else:
+                print("settings column already exists.")
+        except Exception as e:
+            print(f"Error checking/adding settings column: {e}")
             
         print("Checking/creating telegram_message_templates table...")
         try:

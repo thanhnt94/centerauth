@@ -128,6 +128,15 @@ async def lifespan(app: FastAPI):
             await db.commit()
             print("[SEED] Telegram system settings initialized.")
             
+        # Update existing clients to use the new default roles
+        from app.modules.clients.models import Client
+        clients_res = await db.execute(select(Client))
+        for client in clients_res.scalars().all():
+            if not client.available_roles or client.available_roles == "user,admin":
+                client.available_roles = "free_user,vip_user,mod,admin,guest"
+                print(f"[SEED] Upgraded client roles list for {client.name}")
+        await db.commit()
+            
     # 4. Start background queue worker and telegram bot (only in one worker process)
     is_main_worker = False
     lock_file = None

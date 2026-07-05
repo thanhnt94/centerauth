@@ -13,7 +13,7 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
   const [appUrl, setAppUrl] = useState(client?.app_url || '');
   const [redirectUri, setRedirectUri] = useState(client?.redirect_uri || '');
   const [backchannelUri, setBackchannelUri] = useState(client?.backchannel_logout_uri || '');
-  const [availableRoles, setAvailableRoles] = useState(client?.available_roles || 'user,admin');
+  const [availableRoles, setAvailableRoles] = useState(client?.available_roles || 'free_user,vip_user,mod,admin,guest');
 
   // Smart URI Auto-completion logic from App URL
   useEffect(() => {

@@ -300,8 +300,8 @@ export const Identities: React.FC = () => {
                         {clients.map(client => {
                           const available = client.available_roles 
                             ? client.available_roles.split(',').map((r: string) => r.trim())
-                            : ['user', 'admin'];
-                          const currentRole = assignedRoles[client.id] || 'user';
+                            : ['free_user', 'vip_user', 'mod', 'admin', 'guest'];
+                          const currentRole = assignedRoles[client.id] || 'free_user';
                           
                           return (
                             <div key={client.id} className="flex items-center justify-between bg-white/[0.02] border border-white/5 rounded-2xl p-4">

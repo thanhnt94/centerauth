@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from datetime import datetime
 from app.core.db import Base
 
@@ -17,6 +17,7 @@ class Client(Base):
     is_active = Column(Boolean, default=True)
     is_visible_on_portal = Column(Boolean, default=True)
     available_roles = Column(String(500), nullable=True, default="free_user,vip_user,mod,admin,guest")
+    telegram_settings_template = Column(Text, nullable=True) # JSON structure for notification configuration
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -32,5 +33,6 @@ class Client(Base):
             "app_color_theme": self.app_color_theme,
             "is_active": self.is_active,
             "is_visible_on_portal": self.is_visible_on_portal,
-            "available_roles": self.available_roles
+            "available_roles": self.available_roles,
+            "telegram_settings_template": self.telegram_settings_template
         }

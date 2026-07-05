@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Settings, Users, Bot, Loader2, CheckCircle, AlertCircle, Save } from 'lucide-react';
+import { Send, Settings, Users, Bot, Loader2, CheckCircle, AlertCircle, Save, History, ExternalLink, FileText, Plus, Trash2, Edit } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface TelegramUser {
@@ -21,7 +21,7 @@ interface SystemSetting {
 }
 
 export const TelegramConsole: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'console' | 'broadcast'>('console');
+  const [activeSubTab, setActiveSubTab] = useState<'console' | 'broadcast' | 'logs' | 'templates'>('console');
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [tgUsers, setTgUsers] = useState<TelegramUser[]>([]);
   const [loadingSettings, setLoadingSettings] = useState(true);
@@ -34,6 +34,122 @@ export const TelegramConsole: React.FC = () => {
   // Form states
   const [broadcastText, setBroadcastText] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Ecosystem Logs states
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Templates states
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [showTplForm, setShowTplForm] = useState(false);
+  const [editingTpl, setEditingTpl] = useState<any | null>(null);
+
+  // Template form fields
+  const [tplClientId, setTplClientId] = useState('');
+  const [tplMessageType, setTplMessageType] = useState('');
+  const [tplLabel, setTplLabel] = useState('');
+  const [tplText, setTplText] = useState('');
+
+  const fetchTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const response = await fetch('/admin/api/telegram/templates');
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingTemplate(true);
+    setStatusMsg(null);
+
+    const payload = {
+      id: editingTpl?.id,
+      client_id: tplClientId,
+      message_type: tplMessageType,
+      label: tplLabel,
+      template_text: tplText
+    };
+
+    try {
+      const response = await fetch('/admin/api/telegram/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        setStatusMsg({ type: 'success', text: 'Template saved successfully.' });
+        setShowTplForm(false);
+        fetchTemplates();
+        setTimeout(() => setStatusMsg(null), 3000);
+      } else {
+        throw new Error(data.detail || 'Failed to save template');
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Error saving template' });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) return;
+    try {
+      const response = await fetch(`/admin/api/telegram/templates/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        setStatusMsg({ type: 'success', text: 'Template deleted successfully.' });
+        fetchTemplates();
+        setTimeout(() => setStatusMsg(null), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+    }
+  };
+
+  const openAddTpl = () => {
+    setEditingTpl(null);
+    setTplClientId('vocaburn');
+    setTplMessageType('');
+    setTplLabel('');
+    setTplText('');
+    setShowTplForm(true);
+  };
+
+  const openEditTpl = (tpl: any) => {
+    setEditingTpl(tpl);
+    setTplClientId(tpl.client_id);
+    setTplMessageType(tpl.message_type);
+    setTplLabel(tpl.label);
+    setTplText(tpl.template_text);
+    setShowTplForm(true);
+  };
+
+  const fetchLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const response = await fetch('/admin/api/telegram/logs');
+      if (response.ok) {
+        const data = await response.json();
+        setLogs(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch telegram logs:', err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -68,6 +184,8 @@ export const TelegramConsole: React.FC = () => {
   useEffect(() => {
     fetchSettings();
     fetchUsers();
+    fetchLogs();
+    fetchTemplates();
   }, []);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -206,6 +324,20 @@ export const TelegramConsole: React.FC = () => {
             className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeSubTab === 'broadcast' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:text-white'}`}
           >
             <Send size={14} /> Broadcast Space
+          </button>
+          <button 
+            type="button"
+            onClick={() => { setActiveSubTab('logs'); fetchLogs(); }}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeSubTab === 'logs' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:text-white'}`}
+          >
+            <History size={14} /> Notification Log
+          </button>
+          <button 
+            type="button"
+            onClick={() => { setActiveSubTab('templates'); fetchTemplates(); }}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeSubTab === 'templates' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:text-white'}`}
+          >
+            <FileText size={14} /> Message Templates
           </button>
         </div>
       </div>
@@ -394,6 +526,246 @@ export const TelegramConsole: React.FC = () => {
               )}
             </div>
           </motion.div>
+        )}
+
+        {activeSubTab === 'logs' && (
+          <motion.div
+            key="logs"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            <div className="glass p-8 rounded-[2rem] border border-white/5 space-y-6">
+              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Ecosystem Telegram Logs</h3>
+                  <p className="text-xs text-slate-400 mt-1">Audit log of all Telegram notifications dispatched to user accounts.</p>
+                </div>
+                <button 
+                  onClick={fetchLogs}
+                  disabled={loadingLogs}
+                  className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+                >
+                  <ExternalLink size={14} className="rotate-180" /> Refresh Log
+                </button>
+              </div>
+
+              {loadingLogs ? (
+                <div className="h-64 flex items-center justify-center">
+                  <Loader2 className="animate-spin text-indigo-500" size={32} />
+                </div>
+              ) : logs.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs font-bold uppercase tracking-wider">
+                  No notifications logged in the database
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-[10px] uppercase tracking-wider text-slate-500">
+                        <th className="py-4 px-4 w-40">Timestamp</th>
+                        <th className="py-4 px-4 w-32">User</th>
+                        <th className="py-4 px-4 w-28">Satellite</th>
+                        <th className="py-4 px-4 w-36">Message Type</th>
+                        <th className="py-4 px-4">Message Content</th>
+                        <th className="py-4 px-4 w-24 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logs.map((log) => (
+                        <tr key={log.id} className="border-b border-white/5 text-xs text-slate-300 hover:bg-white/[0.01] transition-all">
+                          <td className="py-4 px-4 font-mono text-slate-400 whitespace-nowrap">
+                            {new Date(log.sent_at).toLocaleString('vi-VN')}
+                          </td>
+                          <td className="py-4 px-4 font-bold text-white">
+                            {log.username}
+                          </td>
+                          <td className="py-4 px-4 font-bold uppercase tracking-wider text-indigo-400">
+                            {log.satellite_source}
+                          </td>
+                          <td className="py-4 px-4 text-slate-400">
+                            {log.message_type || 'General'}
+                          </td>
+                          <td className="py-4 px-4 max-w-xs truncate" title={log.text}>
+                            {log.text.replace(/<[^>]*>/g, '')}
+                          </td>
+                          <td className="py-4 px-4 text-center">
+                            <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                              log.status === 'success' 
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            }`}>
+                              {log.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {activeSubTab === 'templates' && (
+          <motion.div
+            key="templates"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            <div className="glass p-8 rounded-[2rem] border border-white/5 space-y-6">
+              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Ecosystem Message Templates</h3>
+                  <p className="text-xs text-slate-400 mt-1">Configure custom notification formats and prompts for satellite services.</p>
+                </div>
+                <button 
+                  onClick={openAddTpl}
+                  className="px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 rounded-xl text-white transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+                >
+                  <Plus size={14} /> Create Template
+                </button>
+              </div>
+
+              {loadingTemplates ? (
+                <div className="h-64 flex items-center justify-center">
+                  <Loader2 className="animate-spin text-indigo-500" size={32} />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs font-bold uppercase tracking-wider">
+                  No custom message templates configured
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {templates.map((tpl) => (
+                    <div key={tpl.id} className="p-6 bg-slate-900/40 border border-white/5 rounded-2xl space-y-4 flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-0.5 rounded text-[9px] font-black uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            {tpl.client_id}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            Type: {tpl.message_type}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-black text-white">{tpl.label}</h4>
+                        <div className="p-4 bg-slate-950/40 rounded-xl border border-white/5 text-xs text-slate-350 font-mono whitespace-pre-wrap min-h-[80px]">
+                          {tpl.template_text}
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-4 border-t border-white/5 mt-4">
+                        <button 
+                          onClick={() => openEditTpl(tpl)}
+                          className="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-all"
+                        >
+                          <Edit size={14} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteTemplate(tpl.id)}
+                          className="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-rose-400 transition-all"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showTplForm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="glass p-8 rounded-[2rem] w-full max-w-xl space-y-6 border border-white/5"
+            >
+              <div className="flex justify-between items-start border-b border-white/5 pb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-white">{editingTpl ? 'Edit Message Template' : 'Create Message Template'}</h3>
+                  <p className="text-xs text-slate-400 mt-1">Configure dynamic message layouts with formatting tags and placeholders.</p>
+                </div>
+                <button 
+                  onClick={() => setShowTplForm(false)} 
+                  className="p-1.5 hover:bg-white/5 rounded-lg text-slate-400 transition-colors"
+                >
+                  <AlertCircle size={20} className="rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveTemplate} className="space-y-4 text-left">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Client ID</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={tplClientId} 
+                      onChange={(e) => setTplClientId(e.target.value)}
+                      placeholder="e.g. vocaburn" 
+                      className="w-full bg-[#0d1321]/60 border border-white/10 rounded-xl p-3.5 text-xs text-white outline-none focus:border-indigo-500/50" 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Message Type</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={tplMessageType} 
+                      onChange={(e) => setTplMessageType(e.target.value)}
+                      placeholder="e.g. study_reminder" 
+                      className="w-full bg-[#0d1321]/60 border border-white/10 rounded-xl p-3.5 text-xs text-white outline-none focus:border-indigo-500/50" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Template Label</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={tplLabel} 
+                    onChange={(e) => setTplLabel(e.target.value)}
+                    placeholder="e.g. Daily Study Alert" 
+                    className="w-full bg-[#0d1321]/60 border border-white/10 rounded-xl p-3.5 text-xs text-white outline-none focus:border-indigo-500/50" 
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1 flex justify-between">
+                    <span>Template Message (HTML Supported)</span>
+                    <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider">Placeholders: {"{username}, {due_count}, {learned_count}"}</span>
+                  </label>
+                  <textarea 
+                    required 
+                    rows={6}
+                    value={tplText} 
+                    onChange={(e) => setTplText(e.target.value)}
+                    placeholder="👋 Chào {username}!\nHôm nay bạn có {due_count} từ vựng cần ôn tập và đã học {learned_count} từ hôm nay." 
+                    className="w-full bg-[#0d1321]/60 border border-white/10 rounded-xl p-4 text-xs font-mono text-white outline-none focus:border-indigo-500/50 resize-none" 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={savingTemplate}
+                  className="w-full py-4 bg-indigo-500 hover:bg-indigo-600 rounded-2xl text-xs font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {savingTemplate ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Save Template
+                </button>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

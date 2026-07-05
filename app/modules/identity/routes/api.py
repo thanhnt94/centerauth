@@ -244,6 +244,37 @@ async def get_user_telegram_config(request: Request, db: AsyncSession = Depends(
     username_setting = username_res.scalar_one_or_none()
     bot_username = username_setting.value.strip() if username_setting and username_setting.value else "VocaburnBot"
     
+    import json
+    settings_dict = {}
+    if config.settings:
+        try:
+            settings_dict = json.loads(config.settings)
+        except Exception:
+            pass
+            
+    vocaburn_settings = settings_dict.setdefault("vocaburn", {})
+    vocaburn_settings.setdefault("reminder_time", config.reminder_time)
+    vocaburn_settings.setdefault("is_active", config.is_active)
+    vocaburn_settings.setdefault("streak_guard_enabled", config.streak_guard_enabled)
+    vocaburn_settings.setdefault("weekly_summary_enabled", config.weekly_summary_enabled)
+    vocaburn_settings.setdefault("inactivity_alert_enabled", config.inactivity_alert_enabled)
+    
+    # Fetch active client templates
+    from app.modules.clients.models import Client
+    clients_res = await db.execute(select(Client).where(Client.is_active == True, Client.telegram_settings_template != None))
+    clients = clients_res.scalars().all()
+    templates = {}
+    for c in clients:
+        try:
+            templates[c.client_id] = {
+                "name": c.name,
+                "app_url": c.app_url,
+                "app_icon": c.app_icon,
+                "schema": json.loads(c.telegram_settings_template)
+            }
+        except Exception:
+            pass
+
     return {
         "is_linked": bool(config.telegram_chat_id),
         "connect_token": config.connect_token,
@@ -252,8 +283,11 @@ async def get_user_telegram_config(request: Request, db: AsyncSession = Depends(
         "streak_guard_enabled": config.streak_guard_enabled,
         "weekly_summary_enabled": config.weekly_summary_enabled,
         "inactivity_alert_enabled": config.inactivity_alert_enabled,
-        "bot_username": bot_username
+        "bot_username": bot_username,
+        "settings": settings_dict,
+        "templates": templates
     }
+
 
 @router.post("/profile/telegram")
 async def update_user_telegram_config(request: Request, data: dict, db: AsyncSession = Depends(get_db)):
@@ -273,19 +307,91 @@ async def update_user_telegram_config(request: Request, data: dict, db: AsyncSes
     if not config:
         raise HTTPException(status_code=404, detail="Config not found")
         
-    if "reminder_time" in data:
-        config.reminder_time = data["reminder_time"]
-    if "is_active" in data:
-        config.is_active = data["is_active"]
-    if "streak_guard_enabled" in data:
-        config.streak_guard_enabled = data["streak_guard_enabled"]
-    if "weekly_summary_enabled" in data:
-        config.weekly_summary_enabled = data["weekly_summary_enabled"]
-    if "inactivity_alert_enabled" in data:
-        config.inactivity_alert_enabled = data["inactivity_alert_enabled"]
+    import json
+    current_settings = {}
+    if config.settings:
+        try:
+            current_settings = json.loads(config.settings)
+        except Exception:
+            pass
+    vocaburn_settings = current_settings.setdefault("vocaburn", {})
+    
+    if "settings" in data:
+        # Structured update
+        for site, site_settings in data["settings"].items():
+            if site not in current_settings:
+                current_settings[site] = {}
+            current_settings[site].update(site_settings)
+            
+            # Sync back to flat columns for Vocaburn backward compatibility
+            if site == "vocaburn":
+                if "reminder_time" in site_settings:
+                    config.reminder_time = site_settings["reminder_time"]
+                if "is_active" in site_settings:
+                    config.is_active = site_settings["is_active"]
+                if "streak_guard_enabled" in site_settings:
+                    config.streak_guard_enabled = site_settings["streak_guard_enabled"]
+                if "weekly_summary_enabled" in site_settings:
+                    config.weekly_summary_enabled = site_settings["weekly_summary_enabled"]
+                if "inactivity_alert_enabled" in site_settings:
+                    config.inactivity_alert_enabled = site_settings["inactivity_alert_enabled"]
+    else:
+        # Legacy flat updates
+        if "reminder_time" in data:
+            config.reminder_time = data["reminder_time"]
+            vocaburn_settings["reminder_time"] = data["reminder_time"]
+        if "is_active" in data:
+            config.is_active = data["is_active"]
+            vocaburn_settings["is_active"] = data["is_active"]
+        if "streak_guard_enabled" in data:
+            config.streak_guard_enabled = data["streak_guard_enabled"]
+            vocaburn_settings["streak_guard_enabled"] = data["streak_guard_enabled"]
+        if "weekly_summary_enabled" in data:
+            config.weekly_summary_enabled = data["weekly_summary_enabled"]
+            vocaburn_settings["weekly_summary_enabled"] = data["weekly_summary_enabled"]
+        if "inactivity_alert_enabled" in data:
+            config.inactivity_alert_enabled = data["inactivity_alert_enabled"]
+            vocaburn_settings["inactivity_alert_enabled"] = data["inactivity_alert_enabled"]
+            
+    config.settings = json.dumps(current_settings)
+    
     if data.get("unlink") is True:
         config.telegram_chat_id = None
         config.connect_token = secrets.token_hex(6).upper() # reset token
         
     await db.commit()
     return {"status": "success"}
+
+@router.get("/profile/telegram/logs")
+async def get_my_telegram_logs(request: Request, db: AsyncSession = Depends(get_db)):
+    """Retrieve Telegram message logs for the logged-in user."""
+    token = request.cookies.get("session_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    payload = JWTService.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid session")
+        
+    user_id = payload["sub"]
+    
+    from app.modules.queue.models import TelegramMessageLog
+    res = await db.execute(
+        select(TelegramMessageLog)
+        .where(TelegramMessageLog.user_id == user_id)
+        .order_by(TelegramMessageLog.sent_at.desc())
+        .limit(20)
+    )
+    logs = res.scalars().all()
+    return [
+        {
+            "id": l.id,
+            "satellite_source": l.satellite_source,
+            "message_type": l.message_type,
+            "text": l.text,
+            "status": l.status,
+            "error": l.error,
+            "sent_at": l.sent_at.isoformat()
+        }
+        for l in logs
+    ]
+

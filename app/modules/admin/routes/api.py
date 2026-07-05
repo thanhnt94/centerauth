@@ -96,6 +96,7 @@ async def add_client(request: Request, db: AsyncSession = Depends(get_db)):
     redirect_uri = f"{app_url}/auth-center/callback"
     
     available_roles = data.get("available_roles") or "user,admin"
+    telegram_settings_template = data.get("telegram_settings_template")
     
     new_client = Client(
         name=name,
@@ -105,7 +106,8 @@ async def add_client(request: Request, db: AsyncSession = Depends(get_db)):
         redirect_uri=redirect_uri,
         is_active=True,
         is_visible_on_portal=True,
-        available_roles=available_roles
+        available_roles=available_roles,
+        telegram_settings_template=telegram_settings_template
     )
     
     db.add(new_client)
@@ -633,6 +635,8 @@ async def update_client(client_id: int, request: Request, db: AsyncSession = Dep
     client.client_secret = data.get("client_secret", client.client_secret)
     client.app_url = data.get("app_url", client.app_url)
     client.available_roles = data.get("available_roles", client.available_roles)
+    if "telegram_settings_template" in data:
+        client.telegram_settings_template = data.get("telegram_settings_template")
     
     # Optional logic for dynamic redirect uri
     redirect_uri = data.get("redirect_uri")
@@ -932,4 +936,110 @@ async def telegram_test(request: Request, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"[TelegramAdmin] Test connection failed: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to connect to Telegram API: {str(e)}")
+
+@router.get("/telegram/logs")
+async def get_admin_telegram_logs(db: AsyncSession = Depends(get_db)):
+    from app.modules.queue.models import TelegramMessageLog
+    from app.modules.identity.models import User as UserDB
+    result = await db.execute(
+        select(TelegramMessageLog, UserDB)
+        .outerjoin(UserDB, UserDB.id == TelegramMessageLog.user_id)
+        .order_by(TelegramMessageLog.sent_at.desc())
+        .limit(100)
+    )
+    rows = result.all()
+    return [
+        {
+            "id": log.id,
+            "user_id": log.user_id,
+            "username": user.username if user else "System/Broadcast",
+            "satellite_source": log.satellite_source,
+            "message_type": log.message_type,
+            "text": log.text,
+            "status": log.status,
+            "error": log.error,
+            "sent_at": log.sent_at.isoformat() if log.sent_at else None
+        }
+        for log, user in rows
+    ]
+
+@router.get("/telegram/templates")
+async def get_admin_telegram_templates(db: AsyncSession = Depends(get_db)):
+    from app.modules.queue.models import TelegramMessageTemplate
+    result = await db.execute(select(TelegramMessageTemplate).order_by(TelegramMessageTemplate.client_id, TelegramMessageTemplate.message_type))
+    templates = result.scalars().all()
+    return [
+        {
+            "id": t.id,
+            "client_id": t.client_id,
+            "message_type": t.message_type,
+            "label": t.label,
+            "template_text": t.template_text,
+            "created_at": t.created_at.isoformat() if t.created_at else None
+        }
+        for t in templates
+    ]
+
+@router.post("/telegram/templates")
+async def save_admin_telegram_template(request: Request, db: AsyncSession = Depends(get_db)):
+    data = await request.json()
+    client_id = data.get("client_id")
+    message_type = data.get("message_type")
+    label = data.get("label")
+    template_text = data.get("template_text")
+    template_id = data.get("id")
+    
+    if not all([client_id, message_type, label, template_text]):
+        raise HTTPException(status_code=400, detail="Missing required template parameters")
+        
+    from app.modules.queue.models import TelegramMessageTemplate
+    
+    if template_id:
+        result = await db.execute(select(TelegramMessageTemplate).where(TelegramMessageTemplate.id == template_id))
+        template = result.scalar_one_or_none()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+        template.client_id = client_id
+        template.message_type = message_type
+        template.label = label
+        template.template_text = template_text
+    else:
+        # Check duplicate
+        dup_res = await db.execute(
+            select(TelegramMessageTemplate)
+            .where(TelegramMessageTemplate.client_id == client_id, TelegramMessageTemplate.message_type == message_type)
+        )
+        if dup_res.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="A template for this Client and Message Type already exists")
+            
+        template = TelegramMessageTemplate(
+            client_id=client_id,
+            message_type=message_type,
+            label=label,
+            template_text=template_text
+        )
+        db.add(template)
+        
+    await db.commit()
+    await db.refresh(template)
+    return {"status": "success", "template": {
+        "id": template.id,
+        "client_id": template.client_id,
+        "message_type": template.message_type,
+        "label": template.label,
+        "template_text": template.template_text
+    }}
+
+@router.delete("/telegram/templates/{template_id}")
+async def delete_admin_telegram_template(template_id: int, db: AsyncSession = Depends(get_db)):
+    from app.modules.queue.models import TelegramMessageTemplate
+    result = await db.execute(select(TelegramMessageTemplate).where(TelegramMessageTemplate.id == template_id))
+    template = result.scalar_one_or_none()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await db.delete(template)
+    await db.commit()
+    return {"status": "success"}
+
+
 

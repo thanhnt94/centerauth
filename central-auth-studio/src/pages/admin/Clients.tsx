@@ -14,6 +14,7 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
   const [redirectUri, setRedirectUri] = useState(client?.redirect_uri || '');
   const [backchannelUri, setBackchannelUri] = useState(client?.backchannel_logout_uri || '');
   const [availableRoles, setAvailableRoles] = useState(client?.available_roles || 'free_user,vip_user,mod,admin,guest');
+  const [telegramSettingsTemplate, setTelegramSettingsTemplate] = useState(client?.telegram_settings_template || '');
 
   // Smart URI Auto-completion logic from App URL
   useEffect(() => {
@@ -33,7 +34,8 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
       app_url: appUrl,
       redirect_uri: redirectUri,
       backchannel_logout_uri: backchannelUri,
-      available_roles: availableRoles
+      available_roles: availableRoles,
+      telegram_settings_template: telegramSettingsTemplate || null
     };
 
     try {
@@ -97,6 +99,17 @@ const ClientForm: React.FC<{ client: Client | null, onClose: () => void, onSucce
         <div className="space-y-1">
           <label className="text-[10px] font-black uppercase text-slate-500">Available Roles (Comma Separated)</label>
           <input value={availableRoles} onChange={e => setAvailableRoles(e.target.value)} required placeholder="member,vip,moderator" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500/50" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500">Telegram Settings Template (JSON Schema)</label>
+          <textarea 
+            value={telegramSettingsTemplate} 
+            onChange={e => setTelegramSettingsTemplate(e.target.value)} 
+            rows={5}
+            placeholder='{"streak_guard_enabled": {"type": "boolean", "label": "Streak Guard", "default": true, "description": "Alert at 22:00"}}' 
+            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-mono text-white outline-none focus:border-indigo-500/50" 
+          />
         </div>
 
         <button type="submit" className="w-full btn-primary py-4 mt-4 font-black uppercase tracking-widest text-xs">

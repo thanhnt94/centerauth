@@ -506,6 +506,21 @@ async def get_telegram_config(
     username_setting = username_res.scalar_one_or_none()
     bot_username = username_setting.value.strip() if username_setting and username_setting.value else "VocaburnBot"
     
+    import json
+    settings_dict = {}
+    if config.settings:
+        try:
+            settings_dict = json.loads(config.settings)
+        except Exception:
+            pass
+            
+    vocaburn_settings = settings_dict.setdefault("vocaburn", {})
+    vocaburn_settings.setdefault("reminder_time", config.reminder_time)
+    vocaburn_settings.setdefault("is_active", config.is_active)
+    vocaburn_settings.setdefault("streak_guard_enabled", config.streak_guard_enabled)
+    vocaburn_settings.setdefault("weekly_summary_enabled", config.weekly_summary_enabled)
+    vocaburn_settings.setdefault("inactivity_alert_enabled", config.inactivity_alert_enabled)
+    
     return {
         "is_linked": bool(config.telegram_chat_id),
         "connect_token": config.connect_token,
@@ -514,7 +529,8 @@ async def get_telegram_config(
         "streak_guard_enabled": config.streak_guard_enabled,
         "weekly_summary_enabled": config.weekly_summary_enabled,
         "inactivity_alert_enabled": config.inactivity_alert_enabled,
-        "bot_username": bot_username
+        "bot_username": bot_username,
+        "settings": settings_dict
     }
 
 @router.post("/telegram/config/{sso_user_id}")
@@ -531,16 +547,54 @@ async def update_telegram_config(
     if not config:
         raise HTTPException(status_code=404, detail="Config not found")
         
-    if "reminder_time" in data:
-        config.reminder_time = data["reminder_time"]
-    if "is_active" in data:
-        config.is_active = data["is_active"]
-    if "streak_guard_enabled" in data:
-        config.streak_guard_enabled = data["streak_guard_enabled"]
-    if "weekly_summary_enabled" in data:
-        config.weekly_summary_enabled = data["weekly_summary_enabled"]
-    if "inactivity_alert_enabled" in data:
-        config.inactivity_alert_enabled = data["inactivity_alert_enabled"]
+    import json
+    current_settings = {}
+    if config.settings:
+        try:
+            current_settings = json.loads(config.settings)
+        except Exception:
+            pass
+    vocaburn_settings = current_settings.setdefault("vocaburn", {})
+    
+    if "settings" in data:
+        # Client updating using structured settings
+        for site, site_settings in data["settings"].items():
+            if site not in current_settings:
+                current_settings[site] = {}
+            current_settings[site].update(site_settings)
+            
+            # Sync back to legacy flat columns for Vocaburn backward compatibility
+            if site == "vocaburn":
+                if "reminder_time" in site_settings:
+                    config.reminder_time = site_settings["reminder_time"]
+                if "is_active" in site_settings:
+                    config.is_active = site_settings["is_active"]
+                if "streak_guard_enabled" in site_settings:
+                    config.streak_guard_enabled = site_settings["streak_guard_enabled"]
+                if "weekly_summary_enabled" in site_settings:
+                    config.weekly_summary_enabled = site_settings["weekly_summary_enabled"]
+                if "inactivity_alert_enabled" in site_settings:
+                    config.inactivity_alert_enabled = site_settings["inactivity_alert_enabled"]
+    else:
+        # Legacy flat updates
+        if "reminder_time" in data:
+            config.reminder_time = data["reminder_time"]
+            vocaburn_settings["reminder_time"] = data["reminder_time"]
+        if "is_active" in data:
+            config.is_active = data["is_active"]
+            vocaburn_settings["is_active"] = data["is_active"]
+        if "streak_guard_enabled" in data:
+            config.streak_guard_enabled = data["streak_guard_enabled"]
+            vocaburn_settings["streak_guard_enabled"] = data["streak_guard_enabled"]
+        if "weekly_summary_enabled" in data:
+            config.weekly_summary_enabled = data["weekly_summary_enabled"]
+            vocaburn_settings["weekly_summary_enabled"] = data["weekly_summary_enabled"]
+        if "inactivity_alert_enabled" in data:
+            config.inactivity_alert_enabled = data["inactivity_alert_enabled"]
+            vocaburn_settings["inactivity_alert_enabled"] = data["inactivity_alert_enabled"]
+            
+    config.settings = json.dumps(current_settings)
+    
     if data.get("unlink") is True:
         config.telegram_chat_id = None
         config.connect_token = secrets.token_hex(6).upper() # reset token
@@ -554,12 +608,44 @@ async def send_telegram_message(
     db: AsyncSession = Depends(get_db),
     _auth: bool = Depends(verify_queue_token)
 ):
-    """Route message delivery through the centralized Telegram Bot."""
+    """Route message delivery through the centralized Telegram Bot and log the dispatch."""
     chat_id = data.get("chat_id")
     text = data.get("text")
+    source = data.get("source", "vocaburn")
+    message_type = data.get("message_type", "study_reminder")
+    variables = data.get("variables") or {}
     
-    if not chat_id or not text:
-        raise HTTPException(status_code=400, detail="Missing chat_id or text")
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Missing chat_id")
+        
+    # Resolve user_id from chat_id
+    res_cfg = await db.execute(select(UserTelegramConfig).where(UserTelegramConfig.telegram_chat_id == str(chat_id)))
+    config = res_cfg.scalar_one_or_none()
+    user_id = config.user_id if config else None
+
+    # Populate fallback variables
+    if "username" not in variables and user_id:
+        from app.modules.identity.models import User as UserDB
+        u_res = await db.execute(select(UserDB).where(UserDB.id == user_id))
+        u_obj = u_res.scalar_one_or_none()
+        if u_obj:
+            variables["username"] = u_obj.full_name or u_obj.username
+
+    # Try to load and compile template
+    from app.modules.queue.models import TelegramMessageTemplate
+    tpl_res = await db.execute(
+        select(TelegramMessageTemplate)
+        .where(TelegramMessageTemplate.client_id == source, TelegramMessageTemplate.message_type == message_type)
+    )
+    template_obj = tpl_res.scalar_one_or_none()
+    if template_obj and template_obj.template_text:
+        text = template_obj.template_text
+        for k, v in variables.items():
+            text = text.replace(f"{{{k}}}", str(v))
+
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing text or template could not compile")
+
         
     from app.modules.queue.telegram_bot import bot
     client_bot = bot
@@ -575,13 +661,30 @@ async def send_telegram_message(
         from telegram import Bot
         client_bot = Bot(token=token)
         
+    success = False
+    error_str = None
     try:
         await client_bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        success = True
         return {"status": "success"}
     except Exception as e:
+        error_str = str(e)
         logger.error(f"[TelegramBot] Centralized send failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=error_str)
+    finally:
+        # Log to TelegramMessageLog
+        if user_id is not None:
+            from app.modules.queue.models import TelegramMessageLog
+            log_entry = TelegramMessageLog(
+                user_id=user_id,
+                satellite_source=source,
+                message_type=message_type,
+                text=text,
+                status="success" if success else "failed",
+                error=error_str
+            )
+            db.add(log_entry)
+            await db.commit()
 
 @router.get("/telegram/configs")
 async def get_all_telegram_configs(
@@ -589,17 +692,89 @@ async def get_all_telegram_configs(
     _auth: bool = Depends(verify_queue_token)
 ):
     """Retrieve all user Telegram configurations (used by satellite scheduler loops)."""
+    import json
     res = await db.execute(select(UserTelegramConfig))
     configs = res.scalars().all()
-    return [
-        {
+    
+    out = []
+    for c in configs:
+        settings_dict = {}
+        if c.settings:
+            try:
+                settings_dict = json.loads(c.settings)
+            except Exception:
+                pass
+        vocaburn_settings = settings_dict.setdefault("vocaburn", {})
+        vocaburn_settings.setdefault("reminder_time", c.reminder_time)
+        vocaburn_settings.setdefault("is_active", c.is_active)
+        vocaburn_settings.setdefault("streak_guard_enabled", c.streak_guard_enabled)
+        vocaburn_settings.setdefault("weekly_summary_enabled", c.weekly_summary_enabled)
+        vocaburn_settings.setdefault("inactivity_alert_enabled", c.inactivity_alert_enabled)
+        
+        out.append({
             "user_id": c.user_id,
             "telegram_chat_id": c.telegram_chat_id,
             "reminder_time": c.reminder_time,
             "is_active": c.is_active,
             "streak_guard_enabled": c.streak_guard_enabled,
             "weekly_summary_enabled": c.weekly_summary_enabled,
-            "inactivity_alert_enabled": c.inactivity_alert_enabled
+            "inactivity_alert_enabled": c.inactivity_alert_enabled,
+            "settings": settings_dict
+        })
+    return out
+
+@router.get("/telegram/logs/{sso_user_id}")
+async def get_user_telegram_logs_by_id(
+    sso_user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Retrieve message logs for a specific SSO user ID."""
+    from app.modules.queue.models import TelegramMessageLog
+    res = await db.execute(
+        select(TelegramMessageLog)
+        .where(TelegramMessageLog.user_id == sso_user_id)
+        .order_by(TelegramMessageLog.sent_at.desc())
+        .limit(50)
+    )
+    logs = res.scalars().all()
+    return [
+        {
+            "id": l.id,
+            "satellite_source": l.satellite_source,
+            "message_type": l.message_type,
+            "text": l.text,
+            "status": l.status,
+            "error": l.error,
+            "sent_at": l.sent_at.isoformat()
         }
-        for c in configs
+        for l in logs
     ]
+
+@router.get("/telegram/logs")
+async def get_all_telegram_logs(
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Retrieve all Telegram message logs (for admin monitor)."""
+    from app.modules.queue.models import TelegramMessageLog
+    res = await db.execute(
+        select(TelegramMessageLog)
+        .order_by(TelegramMessageLog.sent_at.desc())
+        .limit(100)
+    )
+    logs = res.scalars().all()
+    return [
+        {
+            "id": l.id,
+            "user_id": l.user_id,
+            "satellite_source": l.satellite_source,
+            "message_type": l.message_type,
+            "text": l.text,
+            "status": l.status,
+            "error": l.error,
+            "sent_at": l.sent_at.isoformat()
+        }
+        for l in logs
+    ]
+

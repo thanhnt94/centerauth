@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Key, Camera, CheckCircle2, Shield, Mail, Send, ExternalLink, MessageCircle } from 'lucide-react';
+import { User, Key, Camera, CheckCircle2, Shield, Mail, Send, ExternalLink, MessageCircle, History } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const Settings: React.FC = () => {
@@ -13,6 +13,7 @@ export const Settings: React.FC = () => {
     
     // Telegram Integration State
     const [tgConfig, setTgConfig] = useState<any>(null);
+    const [tgLogs, setTgLogs] = useState<any[]>([]);
 
     const fetchTgConfig = async () => {
         try {
@@ -26,6 +27,18 @@ export const Settings: React.FC = () => {
         }
     };
 
+    const fetchTgLogs = async () => {
+        try {
+            const r = await fetch('/api/auth/profile/telegram/logs');
+            if (r.ok) {
+                const data = await r.json();
+                setTgLogs(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch telegram logs:', err);
+        }
+    };
+
     useEffect(() => {
         fetch('/api/profile/me')
             .then(r => r.json())
@@ -35,17 +48,30 @@ export const Settings: React.FC = () => {
                 setEmail(data.email || '');
             });
         fetchTgConfig();
+        fetchTgLogs();
     }, []);
 
-    const handleToggleTgSetting = async (field: string, val: any) => {
+    const handleToggleTgSatelliteSetting = async (site: string, field: string, val: any) => {
         try {
+            const currentSettings = tgConfig?.settings || {};
+            const updatedSettings = {
+                ...currentSettings,
+                [site]: {
+                    ...currentSettings[site],
+                    [field]: val
+                }
+            };
             const res = await fetch('/api/auth/profile/telegram', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [field]: val })
+                body: JSON.stringify({ settings: { [site]: { [field]: val } } })
             });
             if (res.ok) {
-                setTgConfig((prev: any) => prev ? { ...prev, [field]: val } : null);
+                setTgConfig((prev: any) => prev ? { 
+                    ...prev, 
+                    settings: updatedSettings,
+                    ...(site === 'vocaburn' ? { [field]: val } : {})
+                } : null);
             }
         } catch (err) {
             console.error(err);
@@ -188,42 +214,10 @@ export const Settings: React.FC = () => {
                                         <span className="text-xs font-bold text-emerald-400">Connected to Telegram</span>
                                     </div>
                                     
-                                    <div className="space-y-3 pt-2">
-                                        <div className="flex items-center justify-between text-xs text-slate-400">
-                                            <span>Mục tiêu học nhắc nhở</span>
-                                            <input 
-                                                type="text" 
-                                                value={tgConfig.reminder_time}
-                                                onChange={(e) => handleToggleTgSetting('reminder_time', e.target.value)}
-                                                className="bg-slate-950/80 border border-white/10 rounded-lg px-2 py-1 text-xs text-white w-16 text-center outline-none"
-                                            />
-                                        </div>
-                                        
-                                        <label className="flex items-center justify-between text-xs text-slate-400 cursor-pointer">
-                                            <span>Nhắc nhở học tập (Active)</span>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={tgConfig.is_active}
-                                                onChange={(e) => handleToggleTgSetting('is_active', e.target.checked)}
-                                                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                                            />
-                                        </label>
-                                        
-                                        <label className="flex items-center justify-between text-xs text-slate-400 cursor-pointer">
-                                            <span>Cảnh báo mất Streak</span>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={tgConfig.streak_guard_enabled}
-                                                onChange={(e) => handleToggleTgSetting('streak_guard_enabled', e.target.checked)}
-                                                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                                            />
-                                        </label>
-                                    </div>
-
                                     <button 
                                         type="button"
                                         onClick={handleUnlinkTg}
-                                        className="w-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-xs font-bold uppercase tracking-wider py-3 rounded-xl transition-all mt-4"
+                                        className="w-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-xs font-bold uppercase tracking-wider py-3 rounded-xl transition-all mt-2"
                                     >
                                         Hủy liên kết Bot
                                     </button>
@@ -326,6 +320,143 @@ export const Settings: React.FC = () => {
                             </button>
                         </div>
                     </form>
+
+                    {/* Centralized Notification Settings & Logs Section */}
+                    {tgConfig && tgConfig.is_linked && (
+                        <div className="space-y-8 mt-10">
+                            {/* Satellite Site preference config */}
+                            <div className="glass-card p-8 space-y-6">
+                                <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                                    <MessageCircle className="text-indigo-400" size={20} />
+                                    <div>
+                                        <h3 className="text-lg font-black uppercase tracking-widest text-white">Cấu hình site vệ tinh</h3>
+                                        <p className="text-xs text-slate-500 mt-1">Cấu hình chi tiết tần suất và loại thông báo cho từng hệ thống.</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    {Object.entries(tgConfig.templates || {}).map(([clientId, clientTpl]: [string, any]) => {
+                                        const schema = clientTpl.schema || {};
+                                        const fields = Object.entries(schema);
+                                        if (fields.length === 0) return null;
+
+                                        return (
+                                            <div key={clientId} className="bg-slate-900/40 border border-white/5 p-6 rounded-2xl space-y-4 animate-fade-in">
+                                                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                                                        <span className="text-sm font-black text-white uppercase tracking-wider">{clientTpl.name} Settings</span>
+                                                    </div>
+                                                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                                        Satellite Active
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    {fields.map(([key, fieldSpec]: [string, any]) => {
+                                                        const currentVal = tgConfig.settings?.[clientId]?.[key] ?? fieldSpec.default;
+                                                        const isBoolean = fieldSpec.type === 'boolean';
+
+                                                        return (
+                                                            <div key={key} className="flex items-center justify-between py-2 border-b border-white/[0.02] last:border-none">
+                                                                <div className="pr-4">
+                                                                    <p className="text-xs font-bold text-slate-300">{fieldSpec.label}</p>
+                                                                    <p className="text-[10px] text-slate-500 mt-0.5">{fieldSpec.description}</p>
+                                                                </div>
+
+                                                                {isBoolean ? (
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={!!currentVal}
+                                                                        onChange={(e) => handleToggleTgSatelliteSetting(clientId, key, e.target.checked)}
+                                                                        className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 h-4.5 w-4.5 cursor-pointer shrink-0"
+                                                                    />
+                                                                ) : (
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={currentVal || ''}
+                                                                        onChange={(e) => handleToggleTgSatelliteSetting(clientId, key, e.target.value)}
+                                                                        className="bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white w-24 text-center outline-none focus:border-indigo-500/50 shrink-0"
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Message Logs Card */}
+                            <div className="glass-card p-8 space-y-6">
+                                <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <History className="text-sky-400" size={20} />
+                                        <div>
+                                            <h3 className="text-lg font-black uppercase tracking-widest text-white">Lịch sử thông báo Telegram</h3>
+                                            <p className="text-xs text-slate-500 mt-1">Danh sách tin nhắn hệ thống đã gửi tới tài khoản Telegram của bạn.</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={fetchTgLogs}
+                                        className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"
+                                        title="Làm mới lịch sử"
+                                    >
+                                        <ExternalLink size={14} className="rotate-180" />
+                                    </button>
+                                </div>
+
+                                {tgLogs.length === 0 ? (
+                                    <div className="py-8 text-center text-slate-500 text-xs font-bold uppercase tracking-wider">
+                                        Chưa có thông báo nào được gửi
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-white/5 text-[9px] uppercase tracking-wider text-slate-500">
+                                                    <th className="py-3 px-4 w-40">Thời gian</th>
+                                                    <th className="py-3 px-4 w-28">Nguồn gửi</th>
+                                                    <th className="py-3 px-4 w-32">Loại tin</th>
+                                                    <th className="py-3 px-4">Nội dung</th>
+                                                    <th className="py-3 px-4 w-20 text-center">Trạng thái</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {tgLogs.map((log) => (
+                                                    <tr key={log.id} className="border-b border-white/5 text-xs text-slate-350 hover:bg-white/[0.01] transition-colors">
+                                                        <td className="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
+                                                            {new Date(log.sent_at).toLocaleString('vi-VN')}
+                                                        </td>
+                                                        <td className="py-3.5 px-4 font-bold text-white uppercase tracking-wider">
+                                                            {log.satellite_source}
+                                                        </td>
+                                                        <td className="py-3.5 px-4 text-slate-400">
+                                                            {log.message_type || 'General'}
+                                                        </td>
+                                                        <td className="py-3.5 px-4 max-w-xs truncate" title={log.text}>
+                                                            {log.text.replace(/<[^>]*>/g, '')}
+                                                        </td>
+                                                        <td className="py-3.5 px-4 text-center">
+                                                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                                                                log.status === 'success' 
+                                                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                                                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                                            }`}>
+                                                                {log.status}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

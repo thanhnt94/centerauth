@@ -24,6 +24,7 @@ export interface Client {
   is_visible_on_portal: boolean;
   is_active: boolean;
   available_roles?: string;
+  telegram_settings_template?: string;
   created_at: string;
 }
 

@@ -68,3 +68,28 @@ class UserTelegramConfig(Base):
     inactivity_alert_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    settings = Column(Text, nullable=True) # JSON configuration string for satellite sites
+
+class TelegramMessageLog(Base):
+    __tablename__ = "telegram_message_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    satellite_source = Column(String(100), nullable=False, index=True)
+    message_type = Column(String(100), nullable=True, index=True)
+    text = Column(Text, nullable=False)
+    status = Column(String(50), default="success", index=True)
+    error = Column(Text, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+
+class TelegramMessageTemplate(Base):
+    __tablename__ = "telegram_message_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(String(100), nullable=False, index=True) # e.g. "vocaburn"
+    message_type = Column(String(100), nullable=False, index=True) # e.g. "study_reminder"
+    label = Column(String(200), nullable=False) # e.g. "Daily Study Reminder"
+    template_text = Column(Text, nullable=False) # e.g. "Chào {username}!..."
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+

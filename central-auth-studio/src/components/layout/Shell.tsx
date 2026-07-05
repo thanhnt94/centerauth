@@ -34,6 +34,8 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     user: true,
     aichat: true,
     tts: true,
+    images: true,
+    telegram: true,
     queue: true
   });
 

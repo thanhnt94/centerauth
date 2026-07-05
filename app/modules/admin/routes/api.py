@@ -411,17 +411,29 @@ async def provision_user(request: Request, db: AsyncSession = Depends(get_db)):
     
     return {"success": True, "message": "User provisioned successfully", "user": new_user.to_dict()}
 
-async def propagate_user_update_to_satellites(user, clients):
+async def propagate_user_update_to_satellites(db: AsyncSession, user, clients):
     # Rule 4: Real-time update propagation
     # Do not propagate changes for default admin ID 1
     if user.username == "admin" or user.email == "admin@mindstack.click":
         return
+        
+    from sqlalchemy import select
+    from app.modules.identity.models import UserClientRole
         
     for client in clients:
         conn, sso_col = await get_satellite_db_connection(client)
         if not conn:
             continue
         try:
+            # Fetch role for this user on this client
+            role_res = await db.execute(
+                select(UserClientRole.role)
+                .where(UserClientRole.user_id == user.id, UserClientRole.client_id == client.id)
+            )
+            user_role = role_res.scalar_one_or_none()
+            if not user_role:
+                user_role = "admin" if user.is_admin else "free_user"
+
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
             tables = [t[0].lower() for t in cursor.fetchall()]
@@ -456,6 +468,9 @@ async def propagate_user_update_to_satellites(user, clients):
                 if "username" in cols:
                     update_fields.append("username = ?")
                     params.append(user.username)
+                if "role" in cols:
+                    update_fields.append("role = ?")
+                    params.append(user_role)
                 if pwd_col:
                     update_fields.append(f"{pwd_col} = ?")
                     params.append(user.password_hash)
@@ -464,9 +479,9 @@ async def propagate_user_update_to_satellites(user, clients):
                 query = f"UPDATE {user_table} SET {', '.join(update_fields)} WHERE {id_col} = ?;"
                 cursor.execute(query, tuple(params))
                 conn.commit()
-                print(f"[SYNC] Successfully propagated CentralAuth user update to {client_id} for user {user.email}")
+                print(f"[SYNC] Successfully propagated CentralAuth user update to {client.name} for user {user.email}")
         except Exception as e:
-            print(f"[SYNC ERROR] Error propagating update to client {client_id}: {e}")
+            print(f"[SYNC ERROR] Error propagating update to client {client.name}: {e}")
         finally:
             conn.close()
 
@@ -502,7 +517,7 @@ async def update_user(user_id: str, request: Request, db: AsyncSession = Depends
     # Propagate the updates to linked satellites
     try:
         clients = await ClientService.list_active_clients(db)
-        await propagate_user_update_to_satellites(user, clients)
+        await propagate_user_update_to_satellites(db, user, clients)
     except Exception as propagation_err:
         print(f"Non-blocking propagation failure: {propagation_err}")
         
@@ -678,6 +693,14 @@ async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db
         # 4. Fetch all Central Auth users
         ca_users = await UserService.list_users(db)
         
+        # 5. Fetch all roles for this client
+        from app.modules.identity.models import UserClientRole
+        roles_res = await db.execute(
+            select(UserClientRole.user_id, UserClientRole.role)
+            .where(UserClientRole.client_id == client.id)
+        )
+        client_roles_map = {r[0]: r[1] for r in roles_res.all()}
+        
         pushed_count = 0
         updated_count = 0
         
@@ -688,6 +711,10 @@ async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db
             # Rule 2: Emergency Fallback Protection
             if ca_user.username == "admin" or ca_user.email.lower() == "admin@mindstack.click":
                 continue
+                
+            user_role = client_roles_map.get(ca_user.id)
+            if not user_role:
+                user_role = "admin" if ca_user.is_admin else "free_user"
                 
             # Check if user exists in satellite by email
             cursor.execute(f"SELECT {id_col} FROM {user_table} WHERE LOWER(email) = ?;", (ca_user.email.lower(),))
@@ -705,6 +732,9 @@ async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db
                 if "username" in cols:
                     update_fields.append("username = ?")
                     params.append(ca_user.username)
+                if "role" in cols:
+                    update_fields.append("role = ?")
+                    params.append(user_role)
                 if pwd_col and ca_user.password_hash:
                     update_fields.append(f"{pwd_col} = ?")
                     params.append(ca_user.password_hash)
@@ -722,6 +752,10 @@ async def push_client_settings(client_id: int, db: AsyncSession = Depends(get_db
                 if "username" in cols:
                     insert_cols.append("username")
                     insert_vals.append(ca_user.username)
+                    
+                if "role" in cols:
+                    insert_cols.append("role")
+                    insert_vals.append(user_role)
                     
                 if pwd_col and ca_user.password_hash:
                     insert_cols.append(pwd_col)

@@ -206,6 +206,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
   const [cachesTotal, setCachesTotal] = useState(0);
   const cachesLimit = 24;
   const [selectedCacheDetail, setSelectedCacheDetail] = useState<any>(null);
+  const [regeneratingHash, setRegeneratingHash] = useState<string | null>(null);
 
   const fetchCaches = async (page = cachesPage, searchVal = cachesSearch) => {
     setCachesLoading(true);
@@ -240,6 +241,37 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
       }
     } catch (err) {
       console.error('Failed to delete cache:', err);
+    }
+  };
+
+  const handleRegenerateCache = async (hash: string) => {
+    if (!confirm('Are you sure you want to regenerate this cached explanation? It will fetch from LLM again and push updates to Vocaburn cards.')) return;
+    setRegeneratingHash(hash);
+    try {
+      const res = await fetch('/api/chat/ai-cache/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_hash: hash })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || 'Cache regenerated successfully!');
+        if (selectedCacheDetail && selectedCacheDetail.prompt_hash === hash) {
+          setSelectedCacheDetail((prev: any) => ({
+            ...prev,
+            response: data.response
+          }));
+        }
+        fetchCaches(cachesPage, cachesSearch);
+      } else {
+        const err = await res.json();
+        alert('Regeneration failed: ' + (err.detail || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Failed to regenerate cache:', err);
+      alert('Failed to connect to the server.');
+    } finally {
+      setRegeneratingHash(null);
     }
   };
 
@@ -1035,6 +1067,18 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
                         <span className="text-[8px] text-slate-650 font-bold uppercase">{item.created_at.split(' ')[0]}</span>
                         <div className="flex gap-1.5">
                           <button
+                            onClick={() => handleRegenerateCache(item.prompt_hash)}
+                            disabled={regeneratingHash === item.prompt_hash}
+                            className="p-1 hover:text-indigo-400 text-slate-500 transition-colors disabled:opacity-30"
+                            title="Regenerate Cache"
+                          >
+                            {regeneratingHash === item.prompt_hash ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={12} />
+                            )}
+                          </button>
+                          <button
                             onClick={() => {
                               navigator.clipboard.writeText(item.response);
                               alert('Copied response!');
@@ -1046,7 +1090,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
                           </button>
                           <button
                             onClick={() => handleDeleteCache(item.prompt_hash)}
-                            className="p-1 hover:text-rose-500 text-slate-550 transition-colors"
+                            className="p-1 hover:text-rose-500 text-slate-555 transition-colors"
                             title="Delete Cache"
                           >
                             <Trash2 size={12} />
@@ -1125,16 +1169,30 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Cached AI Explanation</h4>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(selectedCacheDetail.response);
-                      alert('Copied response to clipboard!');
-                    }}
-                    className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-xl transition-all"
-                  >
-                    <Copy size={12} />
-                    Copy Explanation
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleRegenerateCache(selectedCacheDetail.prompt_hash)}
+                      disabled={regeneratingHash === selectedCacheDetail.prompt_hash}
+                      className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-xl transition-all disabled:opacity-30"
+                    >
+                      {regeneratingHash === selectedCacheDetail.prompt_hash ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={12} />
+                      )}
+                      Regenerate
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedCacheDetail.response);
+                        alert('Copied response to clipboard!');
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-xl transition-all"
+                    >
+                      <Copy size={12} />
+                      Copy Explanation
+                    </button>
+                  </div>
                 </div>
                 <div className="p-5 bg-slate-950/70 border border-white/5 rounded-2xl text-sm text-slate-200 break-words whitespace-pre-wrap leading-relaxed">
                   {selectedCacheDetail.response}

@@ -870,3 +870,106 @@ async def delete_ai_cache(
     await db.commit()
     return {"success": True, "message": "Cached response deleted successfully!"}
 
+
+@router.post("/ai-cache/regenerate")
+async def regenerate_ai_cache(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_auth_db)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    prompt_hash = data.get("prompt_hash")
+    if not prompt_hash:
+        raise HTTPException(status_code=400, detail="prompt_hash is required")
+        
+    # 1. Fetch cache entry
+    stmt = select(AICache).where(AICache.prompt_hash == prompt_hash)
+    res = await db.execute(stmt)
+    cache = res.scalar_one_or_none()
+    if not cache:
+        raise HTTPException(status_code=404, detail="Cache entry not found")
+        
+    # 2. Get admins for API keys
+    admin_result = await db.execute(
+        select(User).where(User.is_admin == True).order_by(User.id.asc())
+    )
+    admins = admin_result.scalars().all()
+    if not admins:
+        raise HTTPException(status_code=500, detail="No admin user found to resolve credentials.")
+        
+    # 3. Mock task to resolve providers
+    class MockTask:
+        def __init__(self, provider, model):
+            self.provider = provider
+            self.model = model
+            self.provider_priority = None
+
+    mock_task = MockTask(cache.provider, cache.model)
+    
+    from app.modules.queue.worker import _build_candidate_providers, _generate_text_full, _send_callback
+    candidates = await _build_candidate_providers(mock_task, admins, db)
+    if not candidates:
+        raise HTTPException(status_code=500, detail="No AI provider configured.")
+        
+    # 4. Generate new explanation
+    response_text = None
+    success_provider_name = None
+    success_model_name = None
+    errors_accumulated = []
+    
+    for candidate in candidates:
+        pname = candidate["provider_name"]
+        pkey = candidate["api_key"]
+        pmodel = candidate["model_id"]
+        plabel = candidate["label"]
+        try:
+            logger.info(f"[Regenerate-Cache] Trying provider '{plabel}' with model '{pmodel}'")
+            provider = get_provider(pname, api_key=pkey, model_id=pmodel)
+            res_val = await _generate_text_full(provider, cache.prompt)
+            if res_val.strip().startswith("[") and "Error" in res_val:
+                raise Exception(res_val)
+            response_text = res_val
+            success_provider_name = pname
+            success_model_name = pmodel
+            break
+        except Exception as e:
+            errors_accumulated.append(f"{plabel} failed: {e}")
+            
+    if response_text is None:
+        raise HTTPException(status_code=500, detail=f"Regeneration failed: {'; '.join(errors_accumulated)}")
+        
+    # 5. Save updated cache
+    from datetime import datetime
+    cache.response = response_text
+    cache.provider = success_provider_name
+    cache.model = success_model_name
+    cache.created_at = datetime.utcnow()
+    await db.commit()
+    
+    # 6. Find all queued tasks with this prompt and fire callbacks to update cards in Vocaburn
+    from app.modules.queue.models import QueuedTask
+    tasks_res = await db.execute(select(QueuedTask).where(QueuedTask.prompt == cache.prompt))
+    tasks = tasks_res.scalars().all()
+    
+    callbacks_sent = 0
+    for task in tasks:
+        task.result = response_text
+        task.status = "completed"
+        task.completed_at = datetime.utcnow()
+        if task.callback_url:
+            try:
+                await _send_callback(task)
+                callbacks_sent += 1
+            except Exception as callback_err:
+                logger.error(f"[Regenerate-Cache] Callback failed for task {task.id}: {callback_err}")
+                
+    await db.commit()
+    
+    return {
+        "success": True, 
+        "message": f"Cache regenerated and updated! Synced with {callbacks_sent} matching cards.",
+        "response": response_text
+    }
+

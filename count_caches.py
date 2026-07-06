@@ -1,22 +1,29 @@
 import asyncio
-from app.core.db import SessionLocal
-from app.core.config import settings
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
+async def check_db(path):
+    print(f"\nChecking database: {path}")
+    try:
+        engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
+        async with engine.begin() as conn:
+            res_tables = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table';"))
+            tables = [row[0] for row in res_tables.fetchall()]
+            print("  TABLES:", tables)
+            
+            if "queued_tasks" in tables:
+                res_tasks = await conn.execute(text("SELECT count(*) FROM queued_tasks WHERE status='completed';"))
+                print("  Completed queue tasks:", res_tasks.scalar())
+            
+            if "ai_caches" in tables:
+                res_caches = await conn.execute(text("SELECT count(*) FROM ai_caches;"))
+                print("  AI Caches count:", res_caches.scalar())
+    except Exception as e:
+        print("  Error:", e)
+
 async def main():
-    print("DATABASE_URL:", settings.DATABASE_URL)
-    print("AIC_DATABASE_URL:", settings.AIC_DATABASE_URL)
-    async with SessionLocal() as db:
-        res_tables = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table';"))
-        tables = [row[0] for row in res_tables.fetchall()]
-        print("TABLES:", tables)
-        
-        try:
-            res_count = await db.execute(text("SELECT count(*) FROM ai_caches;"))
-            count = res_count.scalar()
-            print("RAW COUNT IS:", count)
-        except Exception as e:
-            print("RAW QUERY ERROR:", e)
+    await check_db("/var/www/CentralAuth/centralauth.db")
+    await check_db("/var/www/Storage/database/CentralAuth.db")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -557,7 +557,7 @@ async def list_models_by_key(
             pass
             
     if not api_key:
-        raise HTTPException(status_code=400, detail="API key is not configured for this key account.")
+        return []
         
     try:
         service = get_provider(provider, api_key=api_key)

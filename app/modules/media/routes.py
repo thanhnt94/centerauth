@@ -42,6 +42,12 @@ class MediaDownloadResponse(BaseModel):
     size_bytes: Optional[int]
     source_info: Optional[str] = None
 
+class PaginatedMediaResponse(BaseModel):
+    total: int
+    assets: List[MediaDownloadResponse]
+    page: int
+    limit: int
+
 @router.post("/search", response_model=List[MediaSearchResponse])
 async def search_media(
     body: MediaSearchRequest,
@@ -80,17 +86,41 @@ async def download_media(
         logger.error(f"Failed to download media from URL '{body.url}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/library", response_model=List[MediaDownloadResponse])
+@router.get("/library", response_model=PaginatedMediaResponse)
 async def get_library(
+    page: int = 1,
+    limit: int = 24,
+    search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get all saved media assets from the database.
+    Get saved media assets from the database with pagination and search.
     """
     from app.modules.media.models import MediaAsset
+    from sqlalchemy import func, or_
     try:
-        result = await db.execute(select(MediaAsset).order_by(MediaAsset.created_at.desc()))
+        # Build base query
+        stmt = select(MediaAsset).order_by(MediaAsset.created_at.desc())
+        total_stmt = select(func.count()).select_from(MediaAsset)
+        
+        if search:
+            search_pattern = f"%{search.strip()}%"
+            filter_cond = or_(
+                MediaAsset.search_query.like(search_pattern),
+                MediaAsset.source_info.like(search_pattern),
+                MediaAsset.filename.like(search_pattern)
+            )
+            stmt = stmt.where(filter_cond)
+            total_stmt = total_stmt.where(filter_cond)
+            
+        # Get total count
+        count_res = await db.execute(total_stmt)
+        total_count = count_res.scalar() or 0
+        
+        # Paginate
+        stmt = stmt.offset((page - 1) * limit).limit(limit)
+        result = await db.execute(stmt)
         assets = result.scalars().all()
         
         response_list = []
@@ -106,7 +136,12 @@ async def get_library(
                 "size_bytes": asset.size_bytes,
                 "source_info": asset.source_info
             })
-        return response_list
+        return {
+            "total": total_count,
+            "assets": response_list,
+            "page": page,
+            "limit": limit
+        }
     except Exception as e:
         logger.error(f"Failed to get media library: {e}")
         raise HTTPException(status_code=500, detail=str(e))

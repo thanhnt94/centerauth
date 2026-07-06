@@ -24,3 +24,15 @@ class Message(Base):
     
     # Relationships
     session = relationship("ChatSession", back_populates="messages")
+
+from app.core.db import Base as MainBase
+
+class AICache(MainBase):
+    __tablename__ = "ai_caches"
+    
+    prompt_hash = Column(String(64), primary_key=True, index=True)
+    prompt = Column(Text, nullable=False)
+    response = Column(Text, nullable=False)
+    provider = Column(String(50), nullable=True)
+    model = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

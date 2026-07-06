@@ -792,3 +792,81 @@ async def save_failover_pool(
     await db.commit()
     return {"success": True, "message": "AI Failover Pool saved successfully!"}
 
+from app.modules.chat.models import AICache
+
+class AICacheItemResponse(BaseModel):
+    prompt_hash: str
+    prompt: str
+    response: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    created_at: str
+
+class PaginatedAICacheResponse(BaseModel):
+    total: int
+    caches: List[AICacheItemResponse]
+    page: int
+    limit: int
+
+@router.get("/ai-cache", response_model=PaginatedAICacheResponse)
+async def get_ai_caches(
+    page: int = 1,
+    limit: int = 24,
+    search: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_auth_db)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    from sqlalchemy import func, or_
+    stmt = select(AICache).order_by(AICache.created_at.desc())
+    total_stmt = select(func.count()).select_from(AICache)
+    
+    if search:
+        search_pattern = f"%{search.strip()}%"
+        filter_cond = or_(
+            AICache.prompt.like(search_pattern),
+            AICache.response.like(search_pattern)
+        )
+        stmt = stmt.where(filter_cond)
+        total_stmt = total_stmt.where(filter_cond)
+        
+    count_res = await db.execute(total_stmt)
+    total_count = count_res.scalar() or 0
+    
+    stmt = stmt.offset((page - 1) * limit).limit(limit)
+    res = await db.execute(stmt)
+    items = res.scalars().all()
+    
+    caches_list = []
+    for item in items:
+        caches_list.append({
+            "prompt_hash": item.prompt_hash,
+            "prompt": item.prompt,
+            "response": item.response,
+            "provider": item.provider,
+            "model": item.model,
+            "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else ""
+        })
+        
+    return {
+        "total": total_count,
+        "caches": caches_list,
+        "page": page,
+        "limit": limit
+    }
+
+@router.delete("/ai-cache/{prompt_hash}")
+async def delete_ai_cache(
+    prompt_hash: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_auth_db)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    await db.execute(delete(AICache).where(AICache.prompt_hash == prompt_hash))
+    await db.commit()
+    return {"success": True, "message": "Cached response deleted successfully!"}
+

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bot, MessageSquare, Send, Plus, Trash2, 
   RefreshCw, Eye, EyeOff, Loader2, Copy, Edit2,
-  AlertCircle, Terminal, Check, UserCheck
+  AlertCircle, Terminal, Check, UserCheck, Search
 } from 'lucide-react';
 
 interface ChatSession {
@@ -164,11 +164,11 @@ const ConfiguredAccountCard: React.FC<ConfiguredAccountCardProps> = ({
 };
 
 interface AIChatConsoleProps {
-  defaultTab?: 'chat' | 'keys';
+  defaultTab?: 'chat' | 'keys' | 'gallery';
 }
 
 export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat' }) => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'keys'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'chat' | 'keys' | 'gallery'>(defaultTab);
 
   useEffect(() => {
     setActiveTab(defaultTab);
@@ -198,6 +198,50 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
   
   const [editingKeyItem, setEditingKeyItem] = useState<CustomApiKey | null>(null);
 
+  // Gallery state
+  const [caches, setCaches] = useState<any[]>([]);
+  const [cachesLoading, setCachesLoading] = useState(false);
+  const [cachesSearch, setCachesSearch] = useState('');
+  const [cachesPage, setCachesPage] = useState(1);
+  const [cachesTotal, setCachesTotal] = useState(0);
+  const cachesLimit = 24;
+
+  const fetchCaches = async (page = cachesPage, searchVal = cachesSearch) => {
+    setCachesLoading(true);
+    try {
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: cachesLimit.toString(),
+      });
+      if (searchVal.trim()) {
+        queryParams.append('search', searchVal.trim());
+      }
+      const res = await fetch(`/api/chat/ai-cache?${queryParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCaches(data.caches || []);
+        setCachesTotal(data.total || 0);
+        setCachesPage(data.page || 1);
+      }
+    } catch (err) {
+      console.error('Failed to load AI caches:', err);
+    } finally {
+      setCachesLoading(false);
+    }
+  };
+
+  const handleDeleteCache = async (hash: string) => {
+    if (!confirm('Are you sure you want to delete this cached explanation?')) return;
+    try {
+      const res = await fetch(`/api/chat/ai-cache/${hash}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchCaches(cachesPage, cachesSearch);
+      }
+    } catch (err) {
+      console.error('Failed to delete cache:', err);
+    }
+  };
+
   // Clear editing state when active provider tab changes
   useEffect(() => {
     setEditingKeyItem(null);
@@ -217,6 +261,12 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
     fetchSessions();
     fetchCredentials();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'gallery') {
+      fetchCaches(1, '');
+    }
+  }, [activeTab]);
 
   const fetchCredentials = async () => {
     try {
@@ -603,13 +653,43 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
         <div>
           <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
             <Bot className="text-indigo-500" size={32} />
-            {activeTab === 'chat' ? 'AI Chat Playground' : 'AI API Configuration'}
+            {activeTab === 'chat' 
+              ? 'AI Chat Playground' 
+              : activeTab === 'gallery'
+                ? 'AI Response Cache Gallery'
+                : 'AI API Configuration'}
           </h2>
           <p className="text-slate-400 mt-2">
             {activeTab === 'chat' 
               ? 'Interact with different Large Language Models and custom credentials.' 
-              : 'Configure multi-account credentials and list available model versions.'}
+              : activeTab === 'gallery'
+                ? 'Review and manage cached AI generated explanations for Vocaburn cards.'
+                : 'Configure multi-account credentials and list available model versions.'}
           </p>
+        </div>
+        
+        {/* Tab switcher */}
+        <div className="flex bg-slate-950/40 p-1.5 rounded-2xl border border-white/5 gap-1 self-start md:self-auto shrink-0">
+          {[
+            { id: 'chat', label: 'Playground' },
+            { id: 'gallery', label: 'Cache Gallery' },
+            { id: 'keys', label: 'Credentials' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                window.history.pushState(null, '', tab.id === 'chat' ? '/admin/aichat' : tab.id === 'gallery' ? '/admin/ai-gallery' : '/admin/ai-settings');
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === tab.id 
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' 
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -868,6 +948,149 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
               onCancelEdit={() => setEditingKeyItem(null)}
             />
           </div>
+        </div>
+      )}
+
+      {activeTab === 'gallery' && (
+        <div className="bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">AI Response Cache</h3>
+            <button 
+              onClick={() => fetchCaches(cachesPage, cachesSearch)}
+              disabled={cachesLoading}
+              className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-slate-300 transition-all flex items-center gap-2 text-xs font-bold"
+            >
+              <RefreshCw className={cachesLoading ? 'animate-spin' : ''} size={14} />
+              Refresh Cache
+            </button>
+          </div>
+
+          {/* Search Input */}
+          <div className="flex gap-4 items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-3 text-slate-500" size={16} />
+              <input 
+                type="text" 
+                value={cachesSearch}
+                onChange={(e) => {
+                  setCachesSearch(e.target.value);
+                  setCachesPage(1);
+                  fetchCaches(1, e.target.value);
+                }}
+                placeholder="Search prompt or response..."
+                className="w-full bg-slate-900/50 border border-white/5 focus:border-indigo-500 outline-none rounded-2xl py-3 pl-12 pr-4 text-xs text-white placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+
+          {cachesLoading && caches.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="animate-spin text-indigo-500" size={32} />
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Loading cache...</span>
+            </div>
+          ) : caches.length === 0 ? (
+            <div className="py-24 text-center text-slate-500 space-y-3">
+              <MessageSquare size={48} className="mx-auto text-slate-700" />
+              <p className="text-sm font-bold">No cached AI responses found.</p>
+              <p className="text-xs text-slate-600">Tasks processed through the AI Queue will automatically be cached here.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-6">
+                {caches.map((item) => (
+                  <div 
+                    key={item.prompt_hash}
+                    className="p-6 bg-slate-900/40 border border-white/5 hover:border-white/10 rounded-2xl transition-all space-y-4 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[10px] text-indigo-400 font-bold font-mono">HASH: {item.prompt_hash.substring(0, 16)}...</span>
+                        <div className="flex gap-2">
+                          {item.provider && (
+                            <span className="bg-slate-950/80 px-2 py-0.5 border border-white/10 rounded text-[9px] font-black uppercase text-indigo-300">
+                              {item.provider}
+                            </span>
+                          )}
+                          {item.model && (
+                            <span className="bg-slate-950/80 px-2 py-0.5 border border-white/10 rounded text-[9px] font-black text-slate-400">
+                              {item.model}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-950/30 rounded-xl border border-white/5">
+                        <p className="text-xs text-slate-300 font-bold">Prompt:</p>
+                        <p className="text-xs text-white mt-1 break-words whitespace-pre-wrap">{item.prompt}</p>
+                      </div>
+
+                      <div className="p-4 bg-slate-950/50 rounded-xl border border-white/5">
+                        <p className="text-xs text-indigo-400 font-bold">Response:</p>
+                        <p className="text-xs text-slate-200 mt-1 break-words whitespace-pre-wrap leading-relaxed">{item.response}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-white/5 pt-4">
+                      <span className="text-[9px] text-slate-500 font-bold uppercase">Cached at: {item.created_at}</span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(item.response);
+                            alert('Copied response to clipboard!');
+                          }}
+                          className="p-2 bg-white/5 hover:bg-indigo-600 hover:text-white border border-white/5 hover:border-indigo-600 rounded-xl text-slate-400 transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"
+                          title="Copy response"
+                        >
+                          <Copy size={12} />
+                          Copy
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCache(item.prompt_hash)}
+                          className="p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-rose-400 transition-all cursor-pointer"
+                          title="Delete cached response"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {cachesTotal > cachesLimit && (
+                <div className="flex items-center justify-between border-t border-white/5 pt-6 mt-6">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">
+                    Showing {Math.min((cachesPage - 1) * cachesLimit + 1, cachesTotal)} - {Math.min(cachesPage * cachesLimit, cachesTotal)} of {cachesTotal} caches
+                  </span>
+                  <div className="flex gap-2">
+                    <button 
+                      disabled={cachesPage === 1}
+                      onClick={() => {
+                        const newPage = cachesPage - 1;
+                        setCachesPage(newPage);
+                        fetchCaches(newPage);
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 border border-white/10 hover:bg-indigo-500 hover:text-white rounded-xl text-xs font-bold text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-all cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <button 
+                      disabled={cachesPage * cachesLimit >= cachesTotal}
+                      onClick={() => {
+                        const newPage = cachesPage + 1;
+                        setCachesPage(newPage);
+                        fetchCaches(newPage);
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 border border-white/10 hover:bg-indigo-500 hover:text-white rounded-xl text-xs font-bold text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-all cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

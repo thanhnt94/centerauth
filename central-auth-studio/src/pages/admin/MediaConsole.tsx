@@ -42,6 +42,10 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
   // Library state
   const [library, setLibrary] = useState<SavedAsset[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [libraryPage, setLibraryPage] = useState(1);
+  const [libraryTotal, setLibraryTotal] = useState(0);
+  const libraryLimit = 24;
 
   // Replacing/Replacing-results state
   const [replacingAsset, setReplacingAsset] = useState<SavedAsset | null>(null);
@@ -75,7 +79,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
 
   useEffect(() => {
     if (activeTab === 'library') {
-      fetchLibrary();
+      fetchLibrary(1, '');
     } else if (activeTab === 'settings') {
       fetchSettings();
     }
@@ -121,13 +125,22 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
     }
   };
 
-  const fetchLibrary = async () => {
+  const fetchLibrary = async (page = libraryPage, searchVal = librarySearch) => {
     setLibraryLoading(true);
     try {
-      const res = await fetch('/api/chat/media/library');
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: libraryLimit.toString(),
+      });
+      if (searchVal.trim()) {
+        queryParams.append('search', searchVal.trim());
+      }
+      const res = await fetch(`/api/chat/media/library?${queryParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setLibrary(data);
+        setLibrary(data.assets || []);
+        setLibraryTotal(data.total || 0);
+        setLibraryPage(data.page || 1);
       }
     } catch (err) {
       console.error('Failed to load library:', err);
@@ -521,6 +534,24 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
               </div>
             </div>
 
+            {/* Search Input */}
+            <div className="flex gap-4 items-center">
+              <div className="flex-1 relative">
+                <Search className="absolute left-4 top-3 text-slate-500" size={16} />
+                <input 
+                  type="text" 
+                  value={librarySearch}
+                  onChange={(e) => {
+                    setLibrarySearch(e.target.value);
+                    setLibraryPage(1);
+                    fetchLibrary(1, e.target.value);
+                  }}
+                  placeholder="Search by keywords, file name, or source information..."
+                  className="w-full bg-slate-900/50 border border-white/5 focus:border-sky-500 outline-none rounded-2xl py-3 pl-12 pr-4 text-xs text-white placeholder:text-slate-500"
+                />
+              </div>
+            </div>
+
             {/* Library Grid */}
             {libraryLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -607,6 +638,38 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
               <div className="h-64 glass rounded-[2.5rem] border border-white/5 border-dashed flex flex-col items-center justify-center text-slate-500 space-y-3">
                 <Database size={40} className="opacity-20" />
                 <p className="text-xs font-black uppercase tracking-wider">No downloaded images in library yet</p>
+              </div>
+            )}
+            {/* Pagination Controls */}
+            {libraryTotal > libraryLimit && (
+              <div className="flex items-center justify-between border-t border-white/5 pt-6">
+                <span className="text-[10px] text-slate-500 font-bold uppercase">
+                  Showing {Math.min((libraryPage - 1) * libraryLimit + 1, libraryTotal)} - {Math.min(libraryPage * libraryLimit, libraryTotal)} of {libraryTotal} assets
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={libraryPage === 1}
+                    onClick={() => {
+                      const newPage = libraryPage - 1;
+                      setLibraryPage(newPage);
+                      fetchLibrary(newPage);
+                    }}
+                    className="px-3 py-1.5 bg-slate-900 border border-white/10 hover:bg-sky-500 hover:text-white rounded-xl text-xs font-bold text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-all cursor-pointer"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    disabled={libraryPage * libraryLimit >= libraryTotal}
+                    onClick={() => {
+                      const newPage = libraryPage + 1;
+                      setLibraryPage(newPage);
+                      fetchLibrary(newPage);
+                    }}
+                    className="px-3 py-1.5 bg-slate-900 border border-white/10 hover:bg-sky-500 hover:text-white rounded-xl text-xs font-bold text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-all cursor-pointer"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </motion.div>

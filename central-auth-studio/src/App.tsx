@@ -30,6 +30,7 @@ const App: React.FC = () => {
             <Routes>
               <Route path="/portal" element={<Portal />} />
               <Route path="/admin/aichat" element={<AIChatConsole defaultTab="chat" />} />
+              <Route path="/admin/ai-gallery" element={<AIChatConsole defaultTab="gallery" />} />
               <Route path="/admin/ai-settings" element={<AIChatConsole defaultTab="keys" />} />
               <Route path="/admin/ai-failover" element={<AIFailoverManager />} />
               <Route path="/admin/queue" element={<QueueDashboard />} />

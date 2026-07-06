@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Volume2, Play, Pause, Download, Trash2, 
-  Activity, Loader2, FileAudio, RefreshCw, Check, Copy
+  Activity, Loader2, FileAudio, RefreshCw, Check, Copy, Search
 } from 'lucide-react';
 
 interface TTSFile {
@@ -86,6 +86,10 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
   const [createMode, setCreateMode] = useState<'single' | 'batch'>('single');
   const [history, setHistory] = useState<TTSFile[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const historyLimit = 24;
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
 
@@ -155,17 +159,26 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchHistory();
+    fetchHistory(1, '');
     fetchSettings();
   }, []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (page = historyPage, searchVal = historySearch) => {
     setHistoryLoading(true);
     try {
-      const res = await fetch('/api/tts/history');
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: historyLimit.toString(),
+      });
+      if (searchVal.trim()) {
+        queryParams.append('search', searchVal.trim());
+      }
+      const res = await fetch(`/api/tts/history?${queryParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setHistory(data);
+        setHistory(data.history || []);
+        setHistoryTotal(data.total || 0);
+        setHistoryPage(data.page || 1);
       }
     } catch (err) {
       console.error('Failed to load TTS history:', err);
@@ -551,13 +564,31 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">TTS Audio Gallery</h3>
             <button 
-              onClick={fetchHistory}
+              onClick={() => fetchHistory(historyPage, historySearch)}
               disabled={historyLoading}
               className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-slate-300 transition-all flex items-center gap-2 text-xs font-bold"
             >
               <RefreshCw className={historyLoading ? 'animate-spin' : ''} size={14} />
               Refresh Gallery
             </button>
+          </div>
+
+          {/* Search Input */}
+          <div className="flex gap-4 items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-3 text-slate-500" size={16} />
+              <input 
+                type="text" 
+                value={historySearch}
+                onChange={(e) => {
+                  setHistorySearch(e.target.value);
+                  setHistoryPage(1);
+                  fetchHistory(1, e.target.value);
+                }}
+                placeholder="Search TTS text prompt or audio path..."
+                className="w-full bg-slate-900/50 border border-white/5 focus:border-indigo-500 outline-none rounded-2xl py-3 pl-12 pr-4 text-xs text-white placeholder:text-slate-500"
+              />
+            </div>
           </div>
 
           {historyLoading && history.length === 0 ? (
@@ -572,7 +603,8 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
               <p className="text-xs text-slate-600">Go to TTS Create to generate your first audio.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {history.map((file) => (
                 <div 
                   key={file.filename}
@@ -643,6 +675,39 @@ export const TTSConsole: React.FC<TTSConsoleProps> = ({ defaultTab = 'create' })
                 </div>
               ))}
             </div>
+            {/* Pagination Controls */}
+            {historyTotal > historyLimit && (
+              <div className="flex items-center justify-between border-t border-white/5 pt-6 mt-6">
+                <span className="text-[10px] text-slate-500 font-bold uppercase">
+                  Showing {Math.min((historyPage - 1) * historyLimit + 1, historyTotal)} - {Math.min(historyPage * historyLimit, historyTotal)} of {historyTotal} items
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={historyPage === 1}
+                    onClick={() => {
+                      const newPage = historyPage - 1;
+                      setHistoryPage(newPage);
+                      fetchHistory(newPage);
+                    }}
+                    className="px-3 py-1.5 bg-slate-900 border border-white/10 hover:bg-indigo-500 hover:text-white rounded-xl text-xs font-bold text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-all cursor-pointer"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    disabled={historyPage * historyLimit >= historyTotal}
+                    onClick={() => {
+                      const newPage = historyPage + 1;
+                      setHistoryPage(newPage);
+                      fetchHistory(newPage);
+                    }}
+                    className="px-3 py-1.5 bg-slate-900 border border-white/10 hover:bg-indigo-500 hover:text-white rounded-xl text-xs font-bold text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-all cursor-pointer"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
           )}
         </div>
       )}

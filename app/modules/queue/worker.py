@@ -231,6 +231,27 @@ async def process_ai_task_helper(task_id: int):
         task_attempts = task.attempts
         task_max_retries = task.max_retries
 
+        import hashlib
+        prompt_hash = hashlib.sha256(task_prompt.encode('utf-8')).hexdigest()
+
+        # Check cache
+        from app.modules.chat.models import AICache
+        try:
+            cache_res = await db.execute(select(AICache).where(AICache.prompt_hash == prompt_hash))
+            cache_item = cache_res.scalar_one_or_none()
+            if cache_item:
+                logger.info(f"[QueueWorker-AI] Cache Hit for task {task_id}! Prompt Hash: {prompt_hash}")
+                task.result = cache_item.response
+                task.status = "completed"
+                task.completed_at = datetime.utcnow()
+                await db.commit()
+                if task.callback_url:
+                    await _send_callback(task)
+                    await db.commit()
+                return
+        except Exception as cache_chk_err:
+            logger.warning(f"[QueueWorker-AI] Failed to check AI cache: {cache_chk_err}")
+
         admin_result = await db.execute(
             select(User).where(User.is_admin == True).order_by(User.id.asc())
         )
@@ -286,6 +307,29 @@ async def process_ai_task_helper(task_id: int):
             task.result = response_text
             task.provider = success_provider_name
             task.completed_at = datetime.utcnow()
+            
+            # Save to AI cache
+            try:
+                model_used = task.model or ""
+                new_cache = AICache(
+                    prompt_hash=prompt_hash,
+                    prompt=task_prompt,
+                    response=response_text,
+                    provider=success_provider_name,
+                    model=model_used
+                )
+                db.add(new_cache)
+                await db.flush()
+            except Exception as cache_write_err:
+                logger.warning(f"[QueueWorker-AI] Failed to save generated text to AI cache: {cache_write_err}")
+                await db.rollback()
+                # Reload task and reset attributes if rollback affected session state
+                task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
+                task = task_res.scalar_one()
+                task.status = "completed"
+                task.result = response_text
+                task.provider = success_provider_name
+                task.completed_at = datetime.utcnow()
         else:
             all_errors = " | ".join(errors_accumulated)
             logger.error(f"[QueueWorker-AI] All candidates failed for task {task_id}. Errors: {all_errors}")

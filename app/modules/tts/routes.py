@@ -97,9 +97,48 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
             
     return {"url": url, "filename": filename, "cached": False}
 
-@router.get("/history")
-async def get_tts_history(db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(TTSCache).order_by(TTSCache.created_at.desc()))
+class TTSHistoryItem(BaseModel):
+    filename: str
+    text: str
+    size_bytes: int
+    created_at: str
+    url: str
+
+class PaginatedTTSResponse(BaseModel):
+    total: int
+    history: List[TTSHistoryItem]
+    page: int
+    limit: int
+
+@router.get("/history", response_model=PaginatedTTSResponse)
+async def get_tts_history(
+    page: int = 1,
+    limit: int = 24,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import func, or_
+    
+    # Base query
+    stmt = select(TTSCache).order_by(TTSCache.created_at.desc())
+    total_stmt = select(func.count()).select_from(TTSCache)
+    
+    if search:
+        search_pattern = f"%{search.strip()}%"
+        filter_cond = or_(
+            TTSCache.text.like(search_pattern),
+            TTSCache.file_path.like(search_pattern)
+        )
+        stmt = stmt.where(filter_cond)
+        total_stmt = total_stmt.where(filter_cond)
+        
+    # Get total count
+    count_res = await db.execute(total_stmt)
+    total_count = count_res.scalar() or 0
+    
+    # Paginate
+    stmt = stmt.offset((page - 1) * limit).limit(limit)
+    res = await db.execute(stmt)
     items = res.scalars().all()
     
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -115,12 +154,18 @@ async def get_tts_history(db: AsyncSession = Depends(get_db)):
             
         history.append({
             "filename": filename,
-            "text": item.text,
+            "text": item.text or "",
             "size_bytes": size_bytes,
-            "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else "",
             "url": f"/static/uploads/tts/{filename}"
         })
-    return history
+        
+    return {
+        "total": total_count,
+        "history": history,
+        "page": page,
+        "limit": limit
+    }
 
 @router.delete("/history/{filename}")
 async def delete_tts_file(filename: str, db: AsyncSession = Depends(get_db)):

@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.core.db import engine, Base
 import app.modules.queue.models
+from app.modules.chat.models import AICache
 from sqlalchemy import text
 
 async def main():

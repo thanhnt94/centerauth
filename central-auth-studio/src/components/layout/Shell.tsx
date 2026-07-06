@@ -105,6 +105,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       title: 'AI Chat Space',
       items: [
         { icon: <Bot size={20} />, label: 'AI Chat', path: '/admin/aichat', color: 'text-indigo-400' },
+        { icon: <History size={20} />, label: 'AI Gallery', path: '/admin/ai-gallery', color: 'text-indigo-300' },
         { icon: <Key size={20} />, label: 'AI Settings', path: '/admin/ai-settings', color: 'text-indigo-300' },
         { icon: <Sliders size={20} />, label: 'AI Failover Pool', path: '/admin/ai-failover', color: 'text-indigo-400' },
       ]

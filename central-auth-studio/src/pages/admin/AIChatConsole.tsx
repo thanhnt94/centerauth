@@ -205,6 +205,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
   const [cachesPage, setCachesPage] = useState(1);
   const [cachesTotal, setCachesTotal] = useState(0);
   const cachesLimit = 24;
+  const [selectedCacheDetail, setSelectedCacheDetail] = useState<any>(null);
 
   const fetchCaches = async (page = cachesPage, searchVal = cachesSearch) => {
     setCachesLoading(true);
@@ -996,66 +997,65 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
               <p className="text-xs text-slate-600">Tasks processed through the AI Queue will automatically be cached here.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-6">
-                {caches.map((item) => (
-                  <div 
-                    key={item.prompt_hash}
-                    className="p-6 bg-slate-900/40 border border-white/5 hover:border-white/10 rounded-2xl transition-all space-y-4 flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[10px] text-indigo-400 font-bold font-mono">HASH: {item.prompt_hash.substring(0, 16)}...</span>
-                        <div className="flex gap-2">
-                          {item.provider && (
-                            <span className="bg-slate-950/80 px-2 py-0.5 border border-white/10 rounded text-[9px] font-black uppercase text-indigo-300">
-                              {item.provider}
-                            </span>
-                          )}
-                          {item.model && (
-                            <span className="bg-slate-950/80 px-2 py-0.5 border border-white/10 rounded text-[9px] font-black text-slate-400">
-                              {item.model}
-                            </span>
-                          )}
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {caches.map((item) => {
+                  const matchInput = item.prompt.match(/Input:\s*([^\n\r]+)/i);
+                  const queryTerm = matchInput ? matchInput[1].trim() : 'AI Explanation';
+                  const mainTitle = queryTerm.split('/')[0].trim();
+                  const subTitle = queryTerm.includes('/') ? queryTerm.substring(queryTerm.indexOf('/') + 1).trim() : '';
+
+                  return (
+                    <div 
+                      key={item.prompt_hash}
+                      onClick={() => setSelectedCacheDetail(item)}
+                      className="p-5 bg-slate-900/40 border border-white/5 hover:border-indigo-500/50 hover:bg-slate-900/80 rounded-2xl transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden h-[180px]"
+                    >
+                      <div className="space-y-2 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-slate-500 font-mono">{item.prompt_hash.substring(0, 10)}</span>
+                          <span className="bg-slate-950/60 px-2 py-0.5 border border-white/5 rounded text-[8px] font-black uppercase text-indigo-400">
+                            {item.provider}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors truncate" title={mainTitle}>
+                          {mainTitle}
+                        </h4>
+                        {subTitle && (
+                          <p className="text-[10px] text-slate-400 truncate" title={subTitle}>{subTitle}</p>
+                        )}
+
+                        <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed mt-1">
+                          {item.response.replace(/[#*`\-]/g, '').trim()}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-white/5 pt-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-[8px] text-slate-650 font-bold uppercase">{item.created_at.split(' ')[0]}</span>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(item.response);
+                              alert('Copied response!');
+                            }}
+                            className="p-1 hover:text-indigo-400 text-slate-500 transition-colors"
+                            title="Copy response"
+                          >
+                            <Copy size={12} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCache(item.prompt_hash)}
+                            className="p-1 hover:text-rose-500 text-slate-550 transition-colors"
+                            title="Delete Cache"
+                          >
+                            <Trash2 size={12} />
+                          </button>
                         </div>
                       </div>
-
-                      <div className="p-3 bg-slate-950/30 rounded-xl border border-white/5">
-                        <p className="text-xs text-slate-300 font-bold">Prompt:</p>
-                        <p className="text-xs text-white mt-1 break-words whitespace-pre-wrap">{item.prompt}</p>
-                      </div>
-
-                      <div className="p-4 bg-slate-950/50 rounded-xl border border-white/5">
-                        <p className="text-xs text-indigo-400 font-bold">Response:</p>
-                        <p className="text-xs text-slate-200 mt-1 break-words whitespace-pre-wrap leading-relaxed">{item.response}</p>
-                      </div>
                     </div>
-
-                    <div className="flex items-center justify-between border-t border-white/5 pt-4">
-                      <span className="text-[9px] text-slate-500 font-bold uppercase">Cached at: {item.created_at}</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(item.response);
-                            alert('Copied response to clipboard!');
-                          }}
-                          className="p-2 bg-white/5 hover:bg-indigo-600 hover:text-white border border-white/5 hover:border-indigo-600 rounded-xl text-slate-400 transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"
-                          title="Copy response"
-                        >
-                          <Copy size={12} />
-                          Copy
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCache(item.prompt_hash)}
-                          className="p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-rose-400 transition-all cursor-pointer"
-                          title="Delete cached response"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Pagination Controls */}
@@ -1092,6 +1092,62 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cache Detail Modal */}
+      {selectedCacheDetail && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedCacheDetail(null)}>
+          <div className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-slate-950/20">
+              <div>
+                <h3 className="text-lg font-black text-white">Cache Detail</h3>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">HASH: {selectedCacheDetail.prompt_hash}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedCacheDetail(null)}
+                className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-all font-bold text-xs"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">System Prompt & Input</h4>
+                <div className="p-4 bg-slate-950/40 border border-white/5 rounded-2xl text-xs text-slate-300 font-mono break-words whitespace-pre-wrap leading-relaxed max-h-[150px] overflow-y-auto custom-scrollbar">
+                  {selectedCacheDetail.prompt}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Cached AI Explanation</h4>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedCacheDetail.response);
+                      alert('Copied response to clipboard!');
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-xl transition-all"
+                  >
+                    <Copy size={12} />
+                    Copy Explanation
+                  </button>
+                </div>
+                <div className="p-5 bg-slate-950/70 border border-white/5 rounded-2xl text-sm text-slate-200 break-words whitespace-pre-wrap leading-relaxed">
+                  {selectedCacheDetail.response}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-white/5 flex justify-between items-center bg-slate-950/20 text-[10px] text-slate-500 font-bold uppercase">
+              <span>Provider: {selectedCacheDetail.provider} ({selectedCacheDetail.model})</span>
+              <span>Cached at: {selectedCacheDetail.created_at}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

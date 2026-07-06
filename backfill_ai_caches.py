@@ -18,6 +18,7 @@ async def main():
         print(f"[+] Found {len(tasks)} completed tasks in total.")
         
         backfilled_count = 0
+        added_hashes = set()
         for task in tasks:
             # Determine task_type
             tt = "ai-explain"
@@ -43,6 +44,9 @@ async def main():
             # Generate hash
             prompt_hash = hashlib.sha256(task.prompt.strip().encode("utf-8")).hexdigest()
             
+            if prompt_hash in added_hashes:
+                continue
+                
             # Check if already in AICache
             cache_check = await db.execute(
                 select(AICache).filter(AICache.prompt_hash == prompt_hash)
@@ -59,6 +63,7 @@ async def main():
                     created_at=task.completed_at or task.created_at or datetime.utcnow()
                 )
                 db.add(ai_cache)
+                added_hashes.add(prompt_hash)
                 backfilled_count += 1
                 if backfilled_count % 100 == 0:
                     print(f"  Processed {backfilled_count} caches...")

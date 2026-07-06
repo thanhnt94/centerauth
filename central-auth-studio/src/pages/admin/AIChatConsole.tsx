@@ -66,20 +66,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   fireworks: 'Fireworks AI'
 };
 
-const PROVIDER_MODELS: Record<string, string[]> = {
-  google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'],
-  groq: ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
-  cerebras: ['llama3.1-70b', 'llama3.1-8b'],
-  nvidia: ['meta/llama-3.3-70b-instruct', 'meta/llama-3.1-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
-  sambanova: ['Meta-Llama-3.3-70B-Instruct', 'Meta-Llama-3.1-70B-Instruct', 'Meta-Llama-3.1-8B-Instruct'],
-  mistral: ['mistral-large-latest', 'open-mixtral-8x22b', 'mistral-small-latest'],
-  cloudflare: ['@cf/meta/llama-3.1-70b-instruct', '@cf/meta/llama-3-8b-instruct'],
-  github_models: ['gpt-4o', 'gpt-4o-mini', 'gemini-2.5-flash', 'meta-llama-3-70b-instruct'],
-  cohere: ['command-r-plus', 'command-r'],
-  huggingface: ['meta-llama/Llama-3.3-70B-Instruct', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
-  fireworks: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3-70b-instruct']
-};
 
 interface ConfiguredAccountCardProps {
   apiKeyItem: CustomApiKey;
@@ -1420,6 +1406,8 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
           onClose={() => setRegenConfigTarget(null)}
           onRegenerate={handleRegenerateCache}
           isRegenerating={regeneratingHash === regenConfigTarget.prompt_hash}
+          aiConfig={aiConfig}
+          customKeys={customKeys}
         />
       )}
     </div>
@@ -1431,39 +1419,84 @@ interface RegenConfigModalProps {
   onClose: () => void;
   onRegenerate: (hash: string, prompt: string, provider: string, model: string) => Promise<void>;
   isRegenerating: boolean;
+  aiConfig: AIConfigResponse | null;
+  customKeys: CustomApiKey[];
 }
 
 const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
   cache,
   onClose,
   onRegenerate,
-  isRegenerating
+  isRegenerating,
+  aiConfig,
+  customKeys
 }) => {
   const [prompt, setPrompt] = useState(cache.prompt);
-  const [provider, setProvider] = useState(cache.provider || 'google');
-  const [model, setModel] = useState(cache.model || '');
-
-  const defaultModels = PROVIDER_MODELS[provider] || [];
-  const [isCustom, setIsCustom] = useState(!defaultModels.includes(cache.model));
-
-  useEffect(() => {
-    const newDefaults = PROVIDER_MODELS[provider] || [];
-    if (newDefaults.length > 0) {
-      // If the original cache model is still in the new provider's defaults, keep it.
-      // Otherwise fallback to the first default.
-      if (!newDefaults.includes(model)) {
-        setModel(newDefaults[0]);
-        setIsCustom(false);
-      }
-    } else {
-      setModel('');
-      setIsCustom(true);
+  
+  // Resolve initial account keyId
+  const [keyId, setKeyId] = useState(() => {
+    if (cache.provider) {
+      // Try to find a custom key matching this provider
+      const matchedCustom = customKeys.find(k => k.provider === cache.provider);
+      if (matchedCustom) return matchedCustom.id;
+      return 'system-' + cache.provider;
     }
-  }, [provider]);
+    return 'system-google';
+  });
+
+  const [model, setModel] = useState(cache.model || '');
+  const [models, setModels] = useState<{id: string, display_name: string}[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isCustom, setIsCustom] = useState(false);
+
+  // Dynamically load models when the selected Inference Account changes
+  useEffect(() => {
+    const loadModels = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/chat/list-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key_id: keyId })
+        });
+        if (res.ok) {
+          const list = await res.json();
+          setModels(list);
+          
+          // If the cached model is in the fetched list, select it.
+          // Otherwise select the first model in the list.
+          const exists = list.some((m: any) => m.id === model);
+          if (exists) {
+            setIsCustom(false);
+          } else if (list.length > 0) {
+            setModel(list[0].id);
+            setIsCustom(false);
+          } else {
+            setIsCustom(true);
+          }
+        } else {
+          setModels([]);
+          setIsCustom(true);
+        }
+      } catch (err) {
+        console.error('Failed to load models for regen modal:', err);
+        setModels([]);
+        setIsCustom(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadModels();
+  }, [keyId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onRegenerate(cache.prompt_hash, prompt, provider, model);
+    // Resolve the provider string based on keyId
+    const resolvedProvider = keyId.startsWith('system-') 
+      ? keyId.replace('system-', '') 
+      : (customKeys.find(k => k.id === keyId)?.provider || 'google');
+
+    onRegenerate(cache.prompt_hash, prompt, resolvedProvider, model);
   };
 
   return (
@@ -1498,15 +1531,36 @@ const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
 
             <div className="grid grid-cols-2 gap-4 items-start">
               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">AI Provider</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">Inference Account</label>
                 <select
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
-                  className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2 px-3 text-xs text-white"
+                  value={keyId}
+                  onChange={(e) => setKeyId(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2.5 px-3 text-xs text-white"
                 >
-                  {Object.keys(PROVIDER_LABELS).map((key) => (
-                    <option key={key} value={key}>{PROVIDER_LABELS[key]}</option>
+                  {/* Custom Keys */}
+                  {customKeys.map(k => (
+                    <option key={k.id} value={k.id}>
+                      {PROVIDER_LABELS[k.provider] || k.provider} - {k.label} ({k.model || 'Default'})
+                    </option>
                   ))}
+                  
+                  {/* System Fallbacks */}
+                  {aiConfig && (
+                    <>
+                      {aiConfig.has_google_fallback && <option value="system-google">Google Studio (Server Default)</option>}
+                      {aiConfig.has_openai_fallback && <option value="system-openai">OpenAI (Server Default)</option>}
+                      {aiConfig.has_groq_fallback && <option value="system-groq">Groq (Server Default)</option>}
+                      {aiConfig.has_cerebras_fallback && <option value="system-cerebras">Cerebras AI (Server Default)</option>}
+                      {aiConfig.has_nvidia_fallback && <option value="system-nvidia">NVIDIA NIM (Server Default)</option>}
+                      {aiConfig.has_sambanova_fallback && <option value="system-sambanova">SambaNova Cloud (Server Default)</option>}
+                      {aiConfig.has_mistral_fallback && <option value="system-mistral">Mistral AI (Server Default)</option>}
+                      {aiConfig.has_cloudflare_fallback && <option value="system-cloudflare">Cloudflare Workers AI (Server Default)</option>}
+                      {aiConfig.has_github_models_fallback && <option value="system-github_models">GitHub Models (Server Default)</option>}
+                      {aiConfig.has_cohere_fallback && <option value="system-cohere">Cohere (Server Default)</option>}
+                      {aiConfig.has_huggingface_fallback && <option value="system-huggingface">Hugging Face (Server Default)</option>}
+                      {aiConfig.has_fireworks_fallback && <option value="system-fireworks">Fireworks AI (Server Default)</option>}
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -1524,11 +1578,18 @@ const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
                       setModel(val);
                     }
                   }}
-                  className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2 px-3 text-xs text-white"
+                  disabled={loading}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2.5 px-3 text-xs text-white"
                 >
-                  {defaultModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
+                  {loading ? (
+                    <option>Loading models...</option>
+                  ) : models.length === 0 ? (
+                    <option value="">No models discovered</option>
+                  ) : (
+                    models.map((m) => (
+                      <option key={m.id} value={m.id}>{m.display_name}</option>
+                    ))
+                  )}
                   <option value="custom">Custom model...</option>
                 </select>
                 

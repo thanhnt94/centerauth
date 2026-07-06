@@ -24,6 +24,7 @@ async def check_db(path):
 async def main():
     await check_db("/var/www/CentralAuth/centralauth.db")
     await check_db("/var/www/Storage/database/CentralAuth.db")
+    await check_db("/var/www/Storage/database/AIChat.db")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -216,11 +216,106 @@ async def start_queue_worker():
     )
 
 
+async def process_ai_task_helper(task_id: int):
+    from sqlalchemy import select
+    from app.modules.identity.models import User
+    
+    async with SessionLocal() as db:
+        stmt = select(QueuedTask).where(QueuedTask.id == task_id)
+        result = await db.execute(stmt)
+        task = result.scalar_one_or_none()
+        if not task:
+            return
+
+        task_prompt = task.prompt
+        task_attempts = task.attempts
+        task_max_retries = task.max_retries
+
+        admin_result = await db.execute(
+            select(User).where(User.is_admin == True).order_by(User.id.asc())
+        )
+        admins = admin_result.scalars().all()
+
+        if not admins:
+            task.status = "failed"
+            task.error = "No admin user found — cannot resolve AI provider credentials."
+            task.completed_at = datetime.utcnow()
+            await db.commit()
+            return
+
+        candidates = await _build_candidate_providers(task, admins, db)
+
+        if not candidates:
+            task.status = "failed"
+            task.error = "No AI providers configured — no valid API key found."
+            task.completed_at = datetime.utcnow()
+            await db.commit()
+            await _send_callback(task)
+            await db.commit()
+            return
+
+        response_text = None
+        success_provider_name = None
+        errors_accumulated = []
+
+        for candidate in candidates:
+            pname = candidate["provider_name"]
+            pkey = candidate["api_key"]
+            pmodel = candidate["model_id"]
+            plabel = candidate["label"]
+            try:
+                logger.info(f"[QueueWorker-AI] Trying provider '{plabel}' with model '{pmodel}' for task {task_id}")
+                provider = get_provider(pname, api_key=pkey, model_id=pmodel)
+                
+                res_val = await _generate_text_full(provider, task_prompt)
+                if res_val.strip().startswith("[") and "Error" in res_val:
+                    raise Exception(res_val)
+
+                response_text = res_val
+                success_provider_name = pname
+                logger.info(f"[QueueWorker-AI] Successfully generated text using provider '{plabel}' for task {task_id}")
+                break
+            except Exception as gen_err:
+                err_msg = f"Provider '{plabel}' ({pmodel}) failed: {gen_err}"
+                logger.error(f"[QueueWorker-AI] {err_msg}")
+                errors_accumulated.append(err_msg)
+                continue
+
+        if response_text is not None:
+            task.status = "completed"
+            task.result = response_text
+            task.provider = success_provider_name
+            task.completed_at = datetime.utcnow()
+        else:
+            all_errors = " | ".join(errors_accumulated)
+            logger.error(f"[QueueWorker-AI] All candidates failed for task {task_id}. Errors: {all_errors}")
+            if task_attempts < task_max_retries:
+                task.status = "pending"
+                task.error = f"Attempt {task_attempts} failed. Errors: {all_errors[:500]}"
+            else:
+                task.status = "failed"
+                task.error = f"Max retries exceeded. Errors: {all_errors[:500]}"
+                task.completed_at = datetime.utcnow()
+
+        await db.commit()
+
+        if task.status in ("completed", "failed") and task.callback_url:
+            await _send_callback(task)
+            await db.commit()
+
 async def start_ai_queue_worker():
     """Poller worker dedicated solely to processing AI text generation tasks."""
     logger.info("[QueueWorker] AI Text Generator Worker task started.")
     from sqlalchemy import or_, not_
-    from app.modules.identity.models import User
+    
+    sem = asyncio.Semaphore(5)
+
+    async def worker_job(task_id: int):
+        async with sem:
+            try:
+                await process_ai_task_helper(task_id)
+            except Exception as e:
+                logger.error(f"[QueueWorker-AI] Error in worker_job for task {task_id}: {e}")
 
     while True:
         is_paused = False
@@ -247,8 +342,8 @@ async def start_ai_queue_worker():
             continue
 
         try:
-            async with SessionLocal(expire_on_commit=False) as db:
-                # Fetch oldest pending AI/Text task (extra_data is null OR task_type != tts)
+            async with SessionLocal() as db:
+                # Fetch oldest pending AI/Text tasks (extra_data is null OR task_type != tts/image)
                 stmt = (
                     select(QueuedTask)
                     .where(
@@ -260,120 +355,26 @@ async def start_ai_queue_worker():
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
-                    .limit(1)
+                    .limit(5)
                 )
                 result = await db.execute(stmt)
-                task = result.scalar_one_or_none()
+                tasks = result.scalars().all()
 
-                if not task:
+                if not tasks:
                     await asyncio.sleep(2)
                     continue
 
-                task_id = task.id
-                task_prompt = task.prompt
-                task_attempts = task.attempts + 1
-                task_max_retries = task.max_retries
+                task_ids = []
+                for task in tasks:
+                    task.status = "processing"
+                    task.processed_at = datetime.utcnow()
+                    task.attempts += 1
+                    task_ids.append(task.id)
+                await db.commit()
 
-                task.status = "processing"
-                task.processed_at = datetime.utcnow()
-                task.attempts += 1
-                try:
-                    await db.commit()
-                except Exception as commit_err:
-                    await db.rollback()
-                    logger.warning(f"[QueueWorker-AI] Failed to lock task {task.id}: {commit_err}")
-                    continue
-
-                logger.info(f"[QueueWorker-AI] Processing task {task.id}")
-
-                async with SessionLocal() as auth_db:
-                    admin_result = await auth_db.execute(
-                        select(User).where(User.is_admin == True).order_by(User.id.asc())
-                    )
-                    admins = admin_result.scalars().all()
-
-                if not admins:
-                    task.status = "failed"
-                    task.error = "No admin user found — cannot resolve AI provider credentials."
-                    task.completed_at = datetime.utcnow()
-                    await db.commit()
-                    continue
-
-                candidates = await _build_candidate_providers(task, admins, db)
-
-                if not candidates:
-                    task.status = "failed"
-                    task.error = "No AI providers configured — no valid API key found."
-                    task.completed_at = datetime.utcnow()
-                    await db.commit()
-                    await _send_callback(task)
-                    await db.commit()
-                    continue
-
-                response_text = None
-                success_provider_name = None
-                errors_accumulated = []
-
-                for candidate in candidates:
-                    pname = candidate["provider_name"]
-                    pkey = candidate["api_key"]
-                    pmodel = candidate["model_id"]
-                    plabel = candidate["label"]
-                    try:
-                        logger.info(f"[QueueWorker-AI] Trying provider '{plabel}' with model '{pmodel}' for task {task_id}")
-                        provider = get_provider(pname, api_key=pkey, model_id=pmodel)
-                        
-                        res_val = await _generate_text_full(provider, task_prompt)
-                        if res_val.strip().startswith("[") and "Error" in res_val:
-                            raise Exception(res_val)
-
-                        response_text = res_val
-                        success_provider_name = pname
-                        logger.info(f"[QueueWorker-AI] Successfully generated text using provider '{plabel}' for task {task_id}")
-                        break
-                    except Exception as gen_err:
-                        err_msg = f"Provider '{plabel}' ({pmodel}) failed: {gen_err}"
-                        logger.error(f"[QueueWorker-AI] {err_msg}")
-                        errors_accumulated.append(err_msg)
-                        continue
-
-                if response_text is not None:
-                    task.status = "completed"
-                    task.result = response_text
-                    task.provider = success_provider_name
-                    task.completed_at = datetime.utcnow()
-                else:
-                    all_errors = " | ".join(errors_accumulated)
-                    logger.error(f"[QueueWorker-AI] All candidates failed for task {task_id}. Errors: {all_errors}")
-                    try:
-                        task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
-                        task = task_res.scalar_one()
-                    except Exception as reload_err:
-                        logger.error(f"[QueueWorker-AI] Failed to reload task {task_id}: {reload_err}")
-                        continue
-                        
-                    if task_attempts < task_max_retries:
-                        task.status = "pending"
-                        task.error = f"Attempt {task_attempts} failed. Errors: {all_errors[:500]}"
-                    else:
-                        task.status = "failed"
-                        task.error = f"Max retries exceeded. Errors: {all_errors[:500]}"
-                        task.completed_at = datetime.utcnow()
-
-                try:
-                    await db.commit()
-                except Exception as commit_err:
-                    await db.rollback()
-                    logger.warning(f"[QueueWorker-AI] Failed to save task {task.id}: {commit_err}")
-                    continue
-
-                if task.status in ("completed", "failed") and task.callback_url:
-                    await _send_callback(task)
-                    try:
-                        await db.commit()
-                    except Exception as cb_err:
-                        await db.rollback()
-                        logger.warning(f"[QueueWorker-AI] Failed to save callback delivery for task {task.id}: {cb_err}")
+                logger.info(f"[QueueWorker-AI] Dispatched {len(task_ids)} tasks for parallel processing: {task_ids}")
+                for tid in task_ids:
+                    asyncio.create_task(worker_job(tid))
 
         except Exception as loop_err:
             logger.error(f"[QueueWorker-AI] Unexpected loop error: {loop_err}", exc_info=True)
@@ -381,10 +382,96 @@ async def start_ai_queue_worker():
         await asyncio.sleep(delay_ai)
 
 
+async def process_tts_task_helper(task_id: int):
+    from sqlalchemy import select
+    
+    async with SessionLocal() as db:
+        stmt = select(QueuedTask).where(QueuedTask.id == task_id)
+        result = await db.execute(stmt)
+        task = result.scalar_one_or_none()
+        if not task:
+            return
+
+        task_prompt = task.prompt
+        task_attempts = task.attempts
+        task_max_retries = task.max_retries
+
+        try:
+            from app.modules.tts.services import AudioGenerator
+            from app.modules.tts.models import TTSCache
+            
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            prompt_hash = AudioGenerator.get_voice_hash(task_prompt)
+            filename = f"tts_{prompt_hash}.mp3"
+            physical_path = os.path.join(upload_dir, filename)
+            
+            cache_res = await db.execute(select(TTSCache).where(TTSCache.prompt_hash == prompt_hash))
+            cache_item = cache_res.scalar_one_or_none()
+            
+            if cache_item and os.path.exists(cache_item.file_path):
+                logger.info(f"[QueueWorker-TTS] TTS cache hit in DB for task {task_id}")
+                task.status = "completed"
+                task.result = f"/static/uploads/tts/{filename}"
+                task.completed_at = datetime.utcnow()
+            else:
+                success = await AudioGenerator.generate_tts(task_prompt, physical_path)
+                if not success:
+                    raise Exception("Failed to synthesize TTS")
+                    
+                try:
+                    if not cache_item:
+                        cache_item = TTSCache(
+                            prompt_hash=prompt_hash,
+                            text=task_prompt,
+                            file_path=f"/static/uploads/tts/{filename}"
+                        )
+                        db.add(cache_item)
+                    else:
+                        cache_item.file_path = f"/static/uploads/tts/{filename}"
+                    await db.flush()
+                except Exception as cache_db_err:
+                    await db.rollback()
+                    logger.warning(f"[QueueWorker-TTS] TTS cache DB collision for task {task_id}: {cache_db_err}")
+                    # reload task
+                    task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
+                    task = task_res.scalar_one()
+                
+                task.status = "completed"
+                task.result = f"/static/uploads/tts/{filename}"
+                task.completed_at = datetime.utcnow()
+                logger.info(f"[QueueWorker-TTS] TTS Task {task_id} completed successfully.")
+        except Exception as tts_err:
+            logger.error(f"[QueueWorker-TTS] TTS generation failed: {tts_err}")
+            if task_attempts < task_max_retries:
+                task.status = "pending"
+                task.error = f"Attempt {task_attempts} failed: {str(tts_err)[:500]}"
+            else:
+                task.status = "failed"
+                task.error = f"Max retries exceeded. Last error: {str(tts_err)[:500]}"
+                task.completed_at = datetime.utcnow()
+
+        await db.commit()
+
+        if task.status in ("completed", "failed") and task.callback_url:
+            await _send_callback(task)
+            await db.commit()
+
 async def start_tts_queue_worker():
     """Poller worker dedicated solely to processing TTS voice generation tasks."""
     logger.info("[QueueWorker] TTS Audio Generator Worker task started.")
     from sqlalchemy import or_
+
+    sem = asyncio.Semaphore(5)
+
+    async def worker_job(task_id: int):
+        async with sem:
+            try:
+                await process_tts_task_helper(task_id)
+            except Exception as e:
+                logger.error(f"[QueueWorker-TTS] Error in worker_job for task {task_id}: {e}")
 
     while True:
         is_paused = False
@@ -411,8 +498,8 @@ async def start_tts_queue_worker():
             continue
 
         try:
-            async with SessionLocal(expire_on_commit=False) as db:
-                # Fetch oldest pending TTS task (extra_data has task_type == tts)
+            async with SessionLocal() as db:
+                # Fetch oldest pending TTS tasks (extra_data has task_type == tts)
                 stmt = (
                     select(QueuedTask)
                     .where(
@@ -423,109 +510,26 @@ async def start_tts_queue_worker():
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
-                    .limit(1)
+                    .limit(5)
                 )
                 result = await db.execute(stmt)
-                task = result.scalar_one_or_none()
+                tasks = result.scalars().all()
 
-                if not task:
+                if not tasks:
                     await asyncio.sleep(2)
                     continue
 
-                task_id = task.id
-                task_prompt = task.prompt
-                task_attempts = task.attempts + 1
-                task_max_retries = task.max_retries
+                task_ids = []
+                for task in tasks:
+                    task.status = "processing"
+                    task.processed_at = datetime.utcnow()
+                    task.attempts += 1
+                    task_ids.append(task.id)
+                await db.commit()
 
-                task.status = "processing"
-                task.processed_at = datetime.utcnow()
-                task.attempts += 1
-                try:
-                    await db.commit()
-                except Exception as commit_err:
-                    await db.rollback()
-                    logger.warning(f"[QueueWorker-TTS] Failed to lock task {task.id}: {commit_err}")
-                    continue
-
-                logger.info(f"[QueueWorker-TTS] Processing task {task.id}")
-
-                try:
-                    from app.modules.tts.services import AudioGenerator
-                    from app.modules.tts.models import TTSCache
-                    
-                    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
-                    os.makedirs(upload_dir, exist_ok=True)
-                    
-                    prompt_hash = AudioGenerator.get_voice_hash(task.prompt)
-                    filename = f"tts_{prompt_hash}.mp3"
-                    physical_path = os.path.join(upload_dir, filename)
-                    
-                    cache_res = await db.execute(select(TTSCache).where(TTSCache.prompt_hash == prompt_hash))
-                    cache_item = cache_res.scalar_one_or_none()
-                    
-                    if cache_item and os.path.exists(cache_item.file_path):
-                        logger.info(f"[QueueWorker-TTS] TTS cache hit in DB for task {task.id}")
-                        task.status = "completed"
-                        task.result = f"/static/uploads/tts/{filename}"
-                        task.completed_at = datetime.utcnow()
-                    else:
-                        success = await AudioGenerator.generate_tts(task.prompt, physical_path)
-                        if not success:
-                            raise Exception("Failed to synthesize TTS")
-                            
-                        try:
-                            if not cache_item:
-                                cache_item = TTSCache(
-                                    prompt_hash=prompt_hash,
-                                    text=task.prompt,
-                                    file_path=f"/static/uploads/tts/{filename}"
-                                )
-                                db.add(cache_item)
-                            else:
-                                cache_item.file_path = f"/static/uploads/tts/{filename}"
-                            await db.flush()
-                        except Exception as cache_db_err:
-                            await db.rollback()
-                            logger.warning(f"[QueueWorker-TTS] TTS cache DB collision for task {task.id}: {cache_db_err}")
-                            task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task.id))
-                            task = task_res.scalar_one()
-                        
-                        task.status = "completed"
-                        task.result = f"/static/uploads/tts/{filename}"
-                        task.completed_at = datetime.utcnow()
-                        logger.info(f"[QueueWorker-TTS] TTS Task {task.id} completed successfully.")
-                except Exception as tts_err:
-                    logger.error(f"[QueueWorker-TTS] TTS generation failed: {tts_err}")
-                    try:
-                        task_res = await db.execute(select(QueuedTask).where(QueuedTask.id == task_id))
-                        task = task_res.scalar_one()
-                    except Exception as reload_err:
-                        logger.error(f"[QueueWorker-TTS] Failed to reload task {task_id}: {reload_err}")
-                        continue
-                        
-                    if task_attempts < task_max_retries:
-                        task.status = "pending"
-                        task.error = f"Attempt {task_attempts} failed: {str(tts_err)[:500]}"
-                    else:
-                        task.status = "failed"
-                        task.error = f"Max retries exceeded. Last error: {str(tts_err)[:500]}"
-                        task.completed_at = datetime.utcnow()
-
-                try:
-                    await db.commit()
-                except Exception as commit_err:
-                    await db.rollback()
-                    logger.warning(f"[QueueWorker-TTS] Failed to save task {task.id}: {commit_err}")
-                    continue
-
-                if task.status in ("completed", "failed") and task.callback_url:
-                    await _send_callback(task)
-                    try:
-                        await db.commit()
-                    except Exception as cb_err:
-                        await db.rollback()
-                        logger.warning(f"[QueueWorker-TTS] Failed to save callback delivery for task {task.id}: {cb_err}")
+                logger.info(f"[QueueWorker-TTS] Dispatched {len(task_ids)} tasks for parallel processing: {task_ids}")
+                for tid in task_ids:
+                    asyncio.create_task(worker_job(tid))
 
         except Exception as loop_err:
             logger.error(f"[QueueWorker-TTS] Unexpected loop error: {loop_err}", exc_info=True)
@@ -533,11 +537,83 @@ async def start_tts_queue_worker():
         await asyncio.sleep(delay_tts)
 
 
+async def process_image_task_helper(task_id: int):
+    from sqlalchemy import select
+    from app.modules.media.services import MediaService
+    
+    async with SessionLocal() as db:
+        stmt = select(QueuedTask).where(QueuedTask.id == task_id)
+        result = await db.execute(stmt)
+        task = result.scalar_one_or_none()
+        if not task:
+            return
+
+        task_prompt = task.prompt
+        task_attempts = task.attempts
+        task_max_retries = task.max_retries
+
+        try:
+            logger.info(f"[QueueWorker-Image] Processing task {task_id}")
+            # 1. Search for image using MediaService (auto provider priority)
+            results = await MediaService.search_images(task_prompt, provider="auto", db=db)
+            if not results:
+                raise Exception(f"No image results found for prompt: {task_prompt}")
+                
+            download_res = None
+            last_err = None
+            # Try to download candidate images sequentially until one succeeds
+            for idx, match in enumerate(results[:5]):
+                try:
+                    logger.info(f"[QueueWorker-Image] Attempting to download image #{idx+1} from {match['provider']}: {match['url']}")
+                    download_res = await MediaService.download_image(
+                        url=match["url"],
+                        provider=match["provider"],
+                        query=task_prompt,
+                        db=db
+                    )
+                    if download_res:
+                        break
+                except Exception as dl_err:
+                    logger.warning(f"[QueueWorker-Image] Failed to download image #{idx+1} ({match['url']}): {dl_err}")
+                    last_err = dl_err
+
+            if not download_res:
+                raise Exception(f"Failed to download any of the top 5 image search results. Last error: {last_err}")
+            
+            # Save results
+            task.result = download_res["local_path"]
+            task.status = "completed"
+            task.completed_at = datetime.utcnow()
+            logger.info(f"[QueueWorker-Image] Image Task {task.id} completed successfully.")
+        except Exception as img_err:
+            logger.error(f"[QueueWorker-Image] Image generation failed: {img_err}")
+            if task_attempts < task_max_retries:
+                task.status = "pending"
+                task.error = f"Attempt {task_attempts} failed: {str(img_err)[:500]}"
+            else:
+                task.status = "failed"
+                task.error = f"Max retries exceeded. Last error: {str(img_err)[:500]}"
+                task.completed_at = datetime.utcnow()
+
+        await db.commit()
+
+        if task.status in ("completed", "failed") and task.callback_url:
+            await _send_callback(task)
+            await db.commit()
+
 async def start_image_queue_worker():
     """Poller worker dedicated solely to processing automatic image search & download tasks."""
     logger.info("[QueueWorker] Image Search & Download Worker task started.")
     from sqlalchemy import or_
-    from app.modules.media.services import MediaService
+
+    sem = asyncio.Semaphore(5)
+
+    async def worker_job(task_id: int):
+        async with sem:
+            try:
+                await process_image_task_helper(task_id)
+            except Exception as e:
+                logger.error(f"[QueueWorker-Image] Error in worker_job for task {task_id}: {e}")
 
     while True:
         is_paused = False
@@ -562,8 +638,8 @@ async def start_image_queue_worker():
             continue
 
         try:
-            async with SessionLocal(expire_on_commit=False) as db:
-                # Fetch oldest pending Image task
+            async with SessionLocal() as db:
+                # Fetch oldest pending Image tasks
                 stmt = (
                     select(QueuedTask)
                     .where(
@@ -574,101 +650,26 @@ async def start_image_queue_worker():
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
-                    .limit(1)
+                    .limit(5)
                 )
                 result = await db.execute(stmt)
-                task = result.scalar_one_or_none()
+                tasks = result.scalars().all()
 
-                if not task:
+                if not tasks:
                     await asyncio.sleep(2)
                     continue
 
-                task_id = task.id
-                task_prompt = task.prompt
-                task_attempts = task.attempts + 1
-                task_max_retries = task.max_retries
+                task_ids = []
+                for task in tasks:
+                    task.status = "processing"
+                    task.processed_at = datetime.utcnow()
+                    task.attempts += 1
+                    task_ids.append(task.id)
+                await db.commit()
 
-                task.status = "processing"
-                task.processed_at = datetime.utcnow()
-                task.attempts += 1
-                try:
-                    await db.commit()
-                except Exception as commit_err:
-                    await db.rollback()
-                    logger.warning(f"[QueueWorker-Image] Failed to lock task {task.id}: {commit_err}")
-                    continue
-
-                try:
-                    logger.info(f"[QueueWorker-Image] Processing task {task.id}")
-                    # 1. Search for image using MediaService (auto provider priority)
-                    results = await MediaService.search_images(task_prompt, provider="auto", db=db)
-                    if not results:
-                        raise Exception(f"No image results found for prompt: {task_prompt}")
-                        
-                    download_res = None
-                    last_err = None
-                    # Try to download candidate images sequentially until one succeeds
-                    for idx, match in enumerate(results[:5]):
-                        try:
-                            logger.info(f"[QueueWorker-Image] Attempting to download image #{idx+1} from {match['provider']}: {match['url']}")
-                            download_res = await MediaService.download_image(
-                                url=match["url"],
-                                provider=match["provider"],
-                                query=task_prompt,
-                                db=db
-                            )
-                            if download_res:
-                                break
-                        except Exception as dl_err:
-                            logger.warning(f"[QueueWorker-Image] Failed to download image #{idx+1} ({match['url']}): {dl_err}")
-                            last_err = dl_err
-
-                    if not download_res:
-                        raise Exception(f"Failed to download any of the top 5 image search results. Last error: {last_err}")
-                    
-                    # Save results
-                    task.result = download_res["local_path"]
-                    task.status = "completed"
-                    task.completed_at = datetime.utcnow()
-                    logger.info(f"[QueueWorker-Image] Image Task {task.id} completed successfully.")
-                except Exception as img_err:
-                    logger.error(f"[QueueWorker-Image] Image generation failed: {img_err}")
-                    try:
-                        # Reload task in new session to avoid dirty session state
-                        async with SessionLocal() as db_err_session:
-                            stmt_reload = select(QueuedTask).where(QueuedTask.id == task_id)
-                            res_reload = await db_err_session.execute(stmt_reload)
-                            task_reload = res_reload.scalar_one_or_none()
-                            if not task_reload:
-                                logger.error(f"[QueueWorker-Image] Failed to reload task {task_id} on error.")
-                                continue
-
-                            if task_attempts < task_max_retries:
-                                task_reload.status = "pending"
-                                task_reload.error = f"Attempt {task_attempts} failed: {str(img_err)[:500]}"
-                            else:
-                                task_reload.status = "failed"
-                                task_reload.error = f"Max retries exceeded. Last error: {str(img_err)[:500]}"
-                                task_reload.completed_at = datetime.utcnow()
-                            await db_err_session.commit()
-                    except Exception as reload_err:
-                        logger.error(f"[QueueWorker-Image] Failed to save error status for task {task_id}: {reload_err}")
-                    continue
-
-                try:
-                    await db.commit()
-                except Exception as commit_err:
-                    await db.rollback()
-                    logger.warning(f"[QueueWorker-Image] Failed to save task {task.id}: {commit_err}")
-                    continue
-
-                if task.status in ("completed", "failed") and task.callback_url:
-                    await _send_callback(task)
-                    try:
-                        await db.commit()
-                    except Exception as cb_err:
-                        await db.rollback()
-                        logger.warning(f"[QueueWorker-Image] Failed to save callback delivery for task {task.id}: {cb_err}")
+                logger.info(f"[QueueWorker-Image] Dispatched {len(task_ids)} tasks for parallel processing: {task_ids}")
+                for tid in task_ids:
+                    asyncio.create_task(worker_job(tid))
 
         except Exception as loop_err:
             logger.error(f"[QueueWorker-Image] Unexpected loop error: {loop_err}", exc_info=True)

@@ -881,6 +881,10 @@ async def regenerate_ai_cache(
         raise HTTPException(status_code=403, detail="Admin access required")
         
     prompt_hash = data.get("prompt_hash")
+    custom_prompt = data.get("prompt")
+    custom_provider = data.get("provider")
+    custom_model = data.get("model")
+    
     if not prompt_hash:
         raise HTTPException(status_code=400, detail="prompt_hash is required")
         
@@ -891,6 +895,17 @@ async def regenerate_ai_cache(
     if not cache:
         raise HTTPException(status_code=404, detail="Cache entry not found")
         
+    import hashlib
+    import json
+    
+    old_prompt = cache.prompt
+    old_hash = cache.prompt_hash
+    target_prompt = custom_prompt if custom_prompt is not None else old_prompt
+    new_hash = hashlib.sha256(target_prompt.encode('utf-8')).hexdigest()
+    
+    provider_to_use = custom_provider if custom_provider else cache.provider
+    model_to_use = custom_model if custom_model else cache.model
+    
     # 2. Get admins for API keys
     admin_result = await db.execute(
         select(User).where(User.is_admin == True).order_by(User.id.asc())
@@ -906,7 +921,7 @@ async def regenerate_ai_cache(
             self.model = model
             self.provider_priority = None
 
-    mock_task = MockTask(cache.provider, cache.model)
+    mock_task = MockTask(provider_to_use, model_to_use)
     
     from app.modules.queue.worker import _build_candidate_providers, _generate_text_full, _send_callback
     candidates = await _build_candidate_providers(mock_task, admins, db)
@@ -927,7 +942,7 @@ async def regenerate_ai_cache(
         try:
             logger.info(f"[Regenerate-Cache] Trying provider '{plabel}' with model '{pmodel}'")
             provider = get_provider(pname, api_key=pkey, model_id=pmodel)
-            res_val = await _generate_text_full(provider, cache.prompt)
+            res_val = await _generate_text_full(provider, target_prompt)
             if res_val.strip().startswith("[") and "Error" in res_val:
                 raise Exception(res_val)
             response_text = res_val
@@ -940,21 +955,89 @@ async def regenerate_ai_cache(
     if response_text is None:
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {'; '.join(errors_accumulated)}")
         
-    # 5. Save updated cache
+    # 5. Save updated cache (handle hash changes)
     from datetime import datetime
-    cache.response = response_text
-    cache.provider = success_provider_name
-    cache.model = success_model_name
-    cache.created_at = datetime.utcnow()
+    
+    linked_list = []
+    try:
+        if cache.linked_cards:
+            linked_list = json.loads(cache.linked_cards)
+    except Exception:
+        pass
+        
+    # Backfill links from queued_tasks if present
+    from app.modules.queue.models import QueuedTask
+    tasks_res = await db.execute(select(QueuedTask).where(QueuedTask.prompt == old_prompt))
+    matched_tasks = tasks_res.scalars().all()
+    for task in matched_tasks:
+        if task.callback_url and task.extra_data:
+            try:
+                extra = json.loads(task.extra_data)
+                card_id = extra.get("card_id")
+                field = extra.get("field", "explanation")
+                if card_id:
+                    new_link = {
+                        "satellite": task.satellite_source,
+                        "card_id": card_id,
+                        "field": field,
+                        "callback_url": task.callback_url
+                    }
+                    if not any(l.get("card_id") == card_id and l.get("field") == field for l in linked_list):
+                        linked_list.append(new_link)
+            except Exception:
+                pass
+
+    if new_hash != old_hash:
+        # Delete old cache
+        await db.execute(delete(AICache).where(AICache.prompt_hash == old_hash))
+        
+        # Check if new cache already exists
+        new_cache_res = await db.execute(select(AICache).where(AICache.prompt_hash == new_hash))
+        existing_new_cache = new_cache_res.scalar_one_or_none()
+        
+        if existing_new_cache:
+            try:
+                existing_links = json.loads(existing_new_cache.linked_cards or "[]")
+                for link in linked_list:
+                    if not any(l.get("card_id") == link.get("card_id") and l.get("field") == link.get("field") for l in existing_links):
+                        existing_links.append(link)
+                existing_new_cache.linked_cards = json.dumps(existing_links)
+            except Exception:
+                pass
+            existing_new_cache.prompt = target_prompt
+            existing_new_cache.response = response_text
+            existing_new_cache.provider = success_provider_name
+            existing_new_cache.model = success_model_name
+            existing_new_cache.created_at = datetime.utcnow()
+            cache = existing_new_cache
+        else:
+            new_cache = AICache(
+                prompt_hash=new_hash,
+                prompt=target_prompt,
+                response=response_text,
+                provider=success_provider_name,
+                model=success_model_name,
+                linked_cards=json.dumps(linked_list),
+                created_at=datetime.utcnow()
+            )
+            db.add(new_cache)
+            cache = new_cache
+    else:
+        cache.prompt = target_prompt
+        cache.response = response_text
+        cache.provider = success_provider_name
+        cache.model = success_model_name
+        cache.linked_cards = json.dumps(linked_list)
+        cache.created_at = datetime.utcnow()
+        
     await db.commit()
     
-    # 6. Find all queued tasks with this prompt and fire callbacks to update cards in Vocaburn
-    from app.modules.queue.models import QueuedTask
-    tasks_res = await db.execute(select(QueuedTask).where(QueuedTask.prompt == cache.prompt))
-    tasks = tasks_res.scalars().all()
-    
+    # 6. Send callbacks to update matching cards
     callbacks_sent = 0
-    for task in tasks:
+    notified_cards = set()
+    
+    for task in matched_tasks:
+        task.prompt = target_prompt
         task.result = response_text
         task.status = "completed"
         task.completed_at = datetime.utcnow()
@@ -964,12 +1047,46 @@ async def regenerate_ai_cache(
                 callbacks_sent += 1
             except Exception as callback_err:
                 logger.error(f"[Regenerate-Cache] Callback failed for task {task.id}: {callback_err}")
+            
+            if task.extra_data:
+                try:
+                    extra = json.loads(task.extra_data)
+                    c_id = extra.get("card_id")
+                    f_name = extra.get("field", "explanation")
+                    if c_id:
+                        notified_cards.add((task.satellite_source, c_id, f_name))
+                except Exception:
+                    pass
+                      
+    for link in linked_list:
+        satellite = link.get("satellite")
+        card_id = link.get("card_id")
+        field = link.get("field", "explanation")
+        callback_url = link.get("callback_url")
+        
+        if (satellite, card_id, field) not in notified_cards:
+            mock_task = QueuedTask(
+                id=f"regen-mock-{uuid.uuid4()}",
+                satellite_source=satellite,
+                prompt=target_prompt,
+                status="completed",
+                result=response_text,
+                callback_url=callback_url,
+                extra_data=json.dumps({"card_id": card_id, "field": field, "task_type": "ai-explain"}),
+                processed_at=datetime.utcnow(),
+                completed_at=datetime.utcnow()
+            )
+            try:
+                await _send_callback(mock_task)
+                callbacks_sent += 1
+            except Exception as callback_err:
+                logger.error(f"[Regenerate-Cache] Callback failed for permanent link {card_id}: {callback_err}")
                 
     await db.commit()
     
     return {
         "success": True, 
-        "message": f"Cache regenerated and updated! Synced with {callbacks_sent} matching cards.",
+        "message": f"Cache updated! Synced with {callbacks_sent} cards.",
         "response": response_text
     }
 

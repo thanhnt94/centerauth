@@ -35,4 +35,5 @@ class AICache(MainBase):
     response = Column(Text, nullable=False)
     provider = Column(String(50), nullable=True)
     model = Column(String(100), nullable=True)
+    linked_cards = Column(Text, nullable=True, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)

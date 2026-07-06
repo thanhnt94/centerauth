@@ -207,6 +207,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
   const cachesLimit = 24;
   const [selectedCacheDetail, setSelectedCacheDetail] = useState<any>(null);
   const [regeneratingHash, setRegeneratingHash] = useState<string | null>(null);
+  const [regenConfigTarget, setRegenConfigTarget] = useState<any | null>(null);
 
   const fetchCaches = async (page = cachesPage, searchVal = cachesSearch) => {
     setCachesLoading(true);
@@ -244,24 +245,22 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
     }
   };
 
-  const handleRegenerateCache = async (hash: string) => {
-    if (!confirm('Are you sure you want to regenerate this cached explanation? It will fetch from LLM again and push updates to Vocaburn cards.')) return;
+  const handleRegenerateCache = async (hash: string, prompt?: string, provider?: string, model?: string) => {
     setRegeneratingHash(hash);
     try {
       const res = await fetch('/api/chat/ai-cache/regenerate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_hash: hash })
+        body: JSON.stringify({ prompt_hash: hash, prompt, provider, model })
       });
       if (res.ok) {
         const data = await res.json();
         alert(data.message || 'Cache regenerated successfully!');
-        if (selectedCacheDetail && selectedCacheDetail.prompt_hash === hash) {
-          setSelectedCacheDetail((prev: any) => ({
-            ...prev,
-            response: data.response
-          }));
-        }
+        
+        // If the prompt changed, the hash in selectedCacheDetail or in caches might have changed.
+        // Let's close modal detail to refresh properly.
+        setSelectedCacheDetail(null);
+        setRegenConfigTarget(null);
         fetchCaches(cachesPage, cachesSearch);
       } else {
         const err = await res.json();
@@ -1067,7 +1066,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
                         <span className="text-[8px] text-slate-650 font-bold uppercase">{item.created_at.split(' ')[0]}</span>
                         <div className="flex gap-1.5">
                           <button
-                            onClick={() => handleRegenerateCache(item.prompt_hash)}
+                            onClick={() => setRegenConfigTarget(item)}
                             disabled={regeneratingHash === item.prompt_hash}
                             className="p-1 hover:text-indigo-400 text-slate-500 transition-colors disabled:opacity-30"
                             title="Regenerate Cache"
@@ -1171,7 +1170,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Cached AI Explanation</h4>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleRegenerateCache(selectedCacheDetail.prompt_hash)}
+                      onClick={() => setRegenConfigTarget(selectedCacheDetail)}
                       disabled={regeneratingHash === selectedCacheDetail.prompt_hash}
                       className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-xl transition-all disabled:opacity-30"
                     >
@@ -1208,6 +1207,118 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
           </div>
         </div>
       )}
+
+      {/* Regeneration Config Modal */}
+      {regenConfigTarget && (
+        <RegenConfigModal
+          cache={regenConfigTarget}
+          onClose={() => setRegenConfigTarget(null)}
+          onRegenerate={handleRegenerateCache}
+          isRegenerating={regeneratingHash === regenConfigTarget.prompt_hash}
+        />
+      )}
+    </div>
+  );
+};
+
+interface RegenConfigModalProps {
+  cache: any;
+  onClose: () => void;
+  onRegenerate: (hash: string, prompt: string, provider: string, model: string) => Promise<void>;
+  isRegenerating: boolean;
+}
+
+const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
+  cache,
+  onClose,
+  onRegenerate,
+  isRegenerating
+}) => {
+  const [prompt, setPrompt] = useState(cache.prompt);
+  const [provider, setProvider] = useState(cache.provider || 'google');
+  const [model, setModel] = useState(cache.model || '');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onRegenerate(cache.prompt_hash, prompt, provider, model);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-xl shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+          <div className="p-6 border-b border-white/5 flex items-center justify-between bg-slate-950/20">
+            <div>
+              <h3 className="text-lg font-black text-white">Regenerate Cache Settings</h3>
+              <p className="text-[10px] text-slate-500 font-mono mt-0.5">Customize prompt, provider and model for this explanation</p>
+            </div>
+            <button 
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-all font-bold text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">Edit Prompt</label>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={6}
+                className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-3 px-4 text-xs text-white resize-y font-mono"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">AI Provider</label>
+                <select
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2 px-3 text-xs text-white"
+                >
+                  {Object.keys(PROVIDER_LABELS).map((key) => (
+                    <option key={key} value={key}>{PROVIDER_LABELS[key]}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">Model Variant</label>
+                <input
+                  type="text"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="e.g. gemini-2.5-pro, gpt-4o"
+                  className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2 px-3 text-xs text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 border-t border-white/5 bg-slate-950/20 flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold py-2.5 px-4 rounded-xl transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isRegenerating || !prompt.trim()}
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2"
+            >
+              {isRegenerating && <Loader2 size={12} className="animate-spin" />}
+              {isRegenerating ? 'Regenerating...' : 'Regenerate & Sync'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

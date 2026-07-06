@@ -244,6 +244,27 @@ async def process_ai_task_helper(task_id: int):
                 task.result = cache_item.response
                 task.status = "completed"
                 task.completed_at = datetime.utcnow()
+                
+                if task.callback_url and task.extra_data:
+                    import json
+                    try:
+                        extra = json.loads(task.extra_data)
+                        card_id = extra.get("card_id")
+                        field = extra.get("field", "explanation")
+                        if card_id:
+                            links = json.loads(cache_item.linked_cards or "[]")
+                            new_link = {
+                                "satellite": task.satellite_source,
+                                "card_id": card_id,
+                                "field": field,
+                                "callback_url": task.callback_url
+                            }
+                            if not any(l.get("card_id") == card_id and l.get("field") == field for l in links):
+                                links.append(new_link)
+                                cache_item.linked_cards = json.dumps(links)
+                    except Exception as link_err:
+                        logger.warning(f"[QueueWorker-AI] Failed to update linked_cards on cache hit: {link_err}")
+                        
                 await db.commit()
                 if task.callback_url:
                     await _send_callback(task)
@@ -311,12 +332,30 @@ async def process_ai_task_helper(task_id: int):
             # Save to AI cache
             try:
                 model_used = task.model or ""
+                initial_links = []
+                if task.callback_url and task.extra_data:
+                    import json
+                    try:
+                        extra = json.loads(task.extra_data)
+                        card_id = extra.get("card_id")
+                        field = extra.get("field", "explanation")
+                        if card_id:
+                            initial_links.append({
+                                "satellite": task.satellite_source,
+                                "card_id": card_id,
+                                "field": field,
+                                "callback_url": task.callback_url
+                            })
+                    except Exception:
+                        pass
+                
                 new_cache = AICache(
                     prompt_hash=prompt_hash,
                     prompt=task_prompt,
                     response=response_text,
                     provider=success_provider_name,
-                    model=model_used
+                    model=model_used,
+                    linked_cards=json.dumps(initial_links) if initial_links else "[]"
                 )
                 db.add(new_cache)
                 await db.flush()

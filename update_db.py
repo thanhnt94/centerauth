@@ -61,6 +61,19 @@ async def main():
         except Exception as e:
             print(f"Error checking/adding source_info column: {e}")
             
+        print("Checking columns in ai_caches table...")
+        try:
+            res = await conn.execute(text("PRAGMA table_info(ai_caches)"))
+            cache_columns = [row[1] for row in res.fetchall()]
+            if "linked_cards" not in cache_columns:
+                print("Adding linked_cards column to ai_caches...")
+                await conn.execute(text("ALTER TABLE ai_caches ADD COLUMN linked_cards TEXT DEFAULT '[]'"))
+                print("linked_cards column added successfully.")
+            else:
+                print("linked_cards column already exists.")
+        except Exception as e:
+            print(f"Error checking/adding linked_cards column: {e}")
+            
         print("Checking/creating telegram_message_templates table...")
         try:
             await conn.run_sync(Base.metadata.create_all)

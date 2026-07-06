@@ -1076,8 +1076,8 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {caches.map((item) => {
-                  const matchInput = item.prompt.match(/Input:\s*([^\n\r]+)/i);
-                  const queryTerm = matchInput ? matchInput[1].trim() : 'AI Explanation';
+                  const promptParts = item.prompt.split(/Input:\s*/i);
+                  const queryTerm = promptParts.length > 1 ? promptParts[promptParts.length - 1].trim().split('\n')[0].trim() : 'AI Explanation';
                   const mainTitle = queryTerm.split('/')[0].trim();
                   const subTitle = queryTerm.includes('/') ? queryTerm.substring(queryTerm.indexOf('/') + 1).trim() : '';
 

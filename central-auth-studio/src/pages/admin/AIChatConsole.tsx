@@ -1076,10 +1076,12 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {caches.map((item) => {
-                  const promptParts = item.prompt.split(/Input:\s*/i);
-                  const queryTerm = promptParts.length > 1 ? promptParts[promptParts.length - 1].trim().split('\n')[0].trim() : 'AI Explanation';
-                  const mainTitle = queryTerm.split('/')[0].trim();
-                  const subTitle = queryTerm.includes('/') ? queryTerm.substring(queryTerm.indexOf('/') + 1).trim() : '';
+                  let links: any[] = [];
+                  try {
+                    links = item.linked_cards ? JSON.parse(item.linked_cards) : [];
+                  } catch (e) {
+                    console.error("Failed to parse linked_cards", e);
+                  }
 
                   return (
                     <div 
@@ -1090,21 +1092,32 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
                       <div className="space-y-2 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-slate-500 font-mono">{item.prompt_hash.substring(0, 10)}</span>
-                          <span className="bg-slate-950/60 px-2 py-0.5 border border-white/5 rounded text-[8px] font-black uppercase text-indigo-400">
+                          <span className="bg-slate-950/60 px-2 py-0.5 border border-white/5 rounded text-[8px] font-black uppercase text-indigo-400 font-mono">
                             {item.provider}
                           </span>
                         </div>
 
-                        <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors truncate" title={mainTitle}>
-                          {mainTitle}
-                        </h4>
-                        {subTitle && (
-                          <p className="text-[10px] text-slate-400 truncate" title={subTitle}>{subTitle}</p>
-                        )}
+                        <p className="text-xs text-slate-400 font-mono truncate" title={item.prompt}>
+                          Prompt: {item.prompt}
+                        </p>
 
-                        <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed mt-1">
+                        <p className="text-[11px] text-slate-350 line-clamp-2 leading-relaxed mt-1">
                           {item.response.replace(/[#*`\-]/g, '').trim()}
                         </p>
+
+                        {links.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                            {links.map((link: any, idx: number) => (
+                              <span 
+                                key={idx} 
+                                className="text-[8px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono font-bold"
+                                title={`Field: ${link.field}, Source: ${link.satellite_source}`}
+                              >
+                                🔗 {link.satellite_source} #{link.card_id}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between border-t border-white/5 pt-2 mt-3" onClick={(e) => e.stopPropagation()}>
@@ -1246,7 +1259,27 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
 
             {/* Modal Footer */}
             <div className="p-6 border-t border-white/5 flex justify-between items-center bg-slate-950/20 text-[10px] text-slate-500 font-bold uppercase">
-              <span>Provider: {selectedCacheDetail.provider} ({selectedCacheDetail.model})</span>
+              <div className="flex flex-col gap-1">
+                <span>Provider: {selectedCacheDetail.provider} ({selectedCacheDetail.model})</span>
+                {selectedCacheDetail.linked_cards && (() => {
+                  try {
+                    const links = JSON.parse(selectedCacheDetail.linked_cards);
+                    if (links.length > 0) {
+                      return (
+                        <div className="flex items-center gap-1.5 mt-1 normal-case font-normal text-slate-400">
+                          <span className="font-bold text-slate-500 uppercase text-[10px]">Linked:</span>
+                          {links.map((link: any, idx: number) => (
+                            <span key={idx} className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono text-[9px] font-bold">
+                              {link.satellite_source} #{link.card_id} ({link.field})
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    }
+                  } catch (e) {}
+                  return null;
+                })()}
+              </div>
               <span>Cached at: {selectedCacheDetail.created_at}</span>
             </div>
           </div>

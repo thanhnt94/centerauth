@@ -800,6 +800,7 @@ class AICacheItemResponse(BaseModel):
     response: str
     provider: Optional[str] = None
     model: Optional[str] = None
+    linked_cards: Optional[str] = None
     created_at: str
 
 class PaginatedAICacheResponse(BaseModel):
@@ -847,6 +848,7 @@ async def get_ai_caches(
             "response": item.response,
             "provider": item.provider,
             "model": item.model,
+            "linked_cards": item.linked_cards,
             "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else ""
         })
         

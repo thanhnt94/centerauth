@@ -1031,6 +1031,7 @@ async def regenerate_ai_cache(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
         
+    logger.info(f"[Regenerate-Cache-API] Incoming request body data: {data}")
     prompt_hash = data.get("prompt_hash")
     custom_prompt = data.get("prompt")
     key_id = data.get("key_id")

@@ -1033,7 +1033,7 @@ async def regenerate_ai_cache(
         
     prompt_hash = data.get("prompt_hash")
     custom_prompt = data.get("prompt")
-    custom_provider = data.get("provider")
+    key_id = data.get("key_id")
     custom_model = data.get("model")
     
     if not prompt_hash:
@@ -1048,13 +1048,15 @@ async def regenerate_ai_cache(
         
     import hashlib
     import json
+    from app.core.config import settings
+    from app.modules.chat.providers import get_provider
+    from app.modules.queue.worker import _generate_text_full
     
     old_prompt = cache.prompt
     old_hash = cache.prompt_hash
     target_prompt = custom_prompt if custom_prompt is not None else old_prompt
     new_hash = hashlib.sha256(target_prompt.encode('utf-8')).hexdigest()
     
-    provider_to_use = custom_provider if custom_provider else cache.provider
     model_to_use = custom_model if custom_model else cache.model
     
     # 2. Get admins for API keys
@@ -1065,44 +1067,90 @@ async def regenerate_ai_cache(
     if not admins:
         raise HTTPException(status_code=500, detail="No admin user found to resolve credentials.")
         
-    # 3. Mock task to resolve providers
-    class MockTask:
-        def __init__(self, provider, model):
-            self.provider = provider
-            self.model = model
-            self.provider_priority = None
-
-    mock_task = MockTask(provider_to_use, model_to_use)
+    # 3. Resolve key by key_id
+    resolved_api_key = None
+    provider_to_use = None
     
-    from app.modules.queue.worker import _build_candidate_providers, _generate_text_full, _send_callback
-    candidates = await _build_candidate_providers(mock_task, admins, db)
-    if not candidates:
-        raise HTTPException(status_code=500, detail="No AI provider configured.")
-        
-    # 4. Generate new explanation
+    if key_id:
+        if key_id.startswith("system-"):
+            provider_to_use = key_id.replace("system-", "")
+            resolved_api_key = getattr(current_user, f"{provider_to_use}_api_key", None)
+            if not resolved_api_key:
+                fallback_keys = {
+                    "google": settings.GEMINI_API_KEY,
+                    "openai": settings.OPENAI_API_KEY,
+                    "groq": settings.GROQ_API_KEY,
+                    "cerebras": settings.CEREBRAS_API_KEY,
+                    "nvidia": settings.NVIDIA_API_KEY,
+                    "sambanova": settings.SAMBANOVA_API_KEY,
+                    "mistral": settings.MISTRAL_API_KEY,
+                    "cloudflare": settings.CLOUDFLARE_API_KEY,
+                    "github_models": settings.GITHUB_MODELS_API_KEY,
+                    "cohere": settings.COHERE_API_KEY,
+                    "huggingface": settings.HUGGINGFACE_API_KEY,
+                    "fireworks": settings.FIREWORKS_API_KEY
+                }
+                resolved_api_key = fallback_keys.get(provider_to_use, "")
+        else:
+            try:
+                keys = json.loads(current_user.api_keys_json or "[]")
+                matched = next((k for k in keys if k.get("id") == key_id), None)
+                if matched:
+                    provider_to_use = matched.get("provider", "google")
+                    resolved_api_key = matched.get("api_key")
+            except Exception:
+                pass
+                
     response_text = None
     success_provider_name = None
     success_model_name = None
     errors_accumulated = []
     
-    for candidate in candidates:
-        pname = candidate["provider_name"]
-        pkey = candidate["api_key"]
-        pmodel = candidate["model_id"]
-        plabel = candidate["label"]
+    # If resolved successfully, execute directly
+    if resolved_api_key and provider_to_use:
         try:
-            logger.info(f"[Regenerate-Cache] Trying provider '{plabel}' with model '{pmodel}'")
-            provider = get_provider(pname, api_key=pkey, model_id=pmodel)
+            logger.info(f"[Regenerate-Cache] Directly using key_id '{key_id}' / provider '{provider_to_use}' with model '{model_to_use}'")
+            provider = get_provider(provider_to_use, api_key=resolved_api_key, model_id=model_to_use)
             res_val = await _generate_text_full(provider, target_prompt)
             if res_val.strip().startswith("[") and "Error" in res_val:
                 raise Exception(res_val)
             response_text = res_val
-            success_provider_name = pname
-            success_model_name = pmodel
-            break
+            success_provider_name = provider_to_use
+            success_model_name = model_to_use
         except Exception as e:
-            errors_accumulated.append(f"{plabel} failed: {e}")
+            errors_accumulated.append(f"{provider_to_use} failed: {e}")
             
+    # Fallback to candidates resolver if key_id didn't resolve or direct call failed
+    if response_text is None:
+        fallback_provider = provider_to_use or cache.provider or "google"
+        logger.info(f"[Regenerate-Cache] Falling back to candidate failover resolver for provider: {fallback_provider}")
+        class MockTask:
+            def __init__(self, provider, model):
+                self.provider = provider
+                self.model = model
+                self.provider_priority = None
+        mock_task = MockTask(fallback_provider, model_to_use)
+        
+        from app.modules.queue.worker import _build_candidate_providers
+        candidates = await _build_candidate_providers(mock_task, admins, db)
+        for candidate in candidates:
+            pname = candidate["provider_name"]
+            pkey = candidate["api_key"]
+            pmodel = candidate["model_id"]
+            plabel = candidate["label"]
+            try:
+                logger.info(f"[Regenerate-Cache-Fallback] Trying provider '{plabel}' with model '{pmodel}'")
+                provider = get_provider(pname, api_key=pkey, model_id=pmodel)
+                res_val = await _generate_text_full(provider, target_prompt)
+                if res_val.strip().startswith("[") and "Error" in res_val:
+                    raise Exception(res_val)
+                response_text = res_val
+                success_provider_name = pname
+                success_model_name = pmodel
+                break
+            except Exception as e:
+                errors_accumulated.append(f"{plabel} failed: {e}")
+                
     if response_text is None:
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {'; '.join(errors_accumulated)}")
         

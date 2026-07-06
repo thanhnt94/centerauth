@@ -331,13 +331,13 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
     }
   };
 
-  const handleRegenerateCache = async (hash: string, prompt?: string, provider?: string, model?: string) => {
+  const handleRegenerateCache = async (hash: string, prompt?: string, keyId?: string, model?: string) => {
     setRegeneratingHash(hash);
     try {
       const res = await fetch('/api/chat/ai-cache/regenerate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_hash: hash, prompt, provider, model })
+        body: JSON.stringify({ prompt_hash: hash, prompt, key_id: keyId, model })
       });
       if (res.ok) {
         const data = await res.json();
@@ -1417,7 +1417,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
 interface RegenConfigModalProps {
   cache: any;
   onClose: () => void;
-  onRegenerate: (hash: string, prompt: string, provider: string, model: string) => Promise<void>;
+  onRegenerate: (hash: string, prompt: string, keyId: string, model: string) => Promise<void>;
   isRegenerating: boolean;
   aiConfig: AIConfigResponse | null;
   customKeys: CustomApiKey[];
@@ -1491,12 +1491,7 @@ const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Resolve the provider string based on keyId
-    const resolvedProvider = keyId.startsWith('system-') 
-      ? keyId.replace('system-', '') 
-      : (customKeys.find(k => k.id === keyId)?.provider || 'google');
-
-    onRegenerate(cache.prompt_hash, prompt, resolvedProvider, model);
+    onRegenerate(cache.prompt_hash, prompt, keyId, model);
   };
 
   return (

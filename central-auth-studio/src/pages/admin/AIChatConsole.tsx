@@ -693,7 +693,7 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
         </div>
       </div>
 
-      {activeTab === 'chat' ? (
+      {activeTab === 'chat' && (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 h-[720px]">
           {/* Sidebar */}
           <div className="lg:col-span-1 bg-slate-950/40 border border-white/5 rounded-[2rem] p-6 flex flex-col gap-6 h-full">
@@ -878,8 +878,9 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
             </form>
           </div>
         </div>
-      ) : (
-        /* Tab 2: API Keys Management (Multiple accounts per provider) */
+      )}
+
+      {activeTab === 'keys' && (
         <div className="glass p-8 rounded-[2rem] border border-white/5 grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Provider Sidebar Tabs */}
           <div className="lg:col-span-1 bg-slate-950/20 border-r border-white/5 pr-6 space-y-2">

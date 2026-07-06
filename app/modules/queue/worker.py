@@ -308,7 +308,7 @@ async def start_ai_queue_worker():
     logger.info("[QueueWorker] AI Text Generator Worker task started.")
     from sqlalchemy import or_, not_
     
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(1)
 
     async def worker_job(task_id: int):
         async with sem:
@@ -355,7 +355,7 @@ async def start_ai_queue_worker():
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
-                    .limit(5)
+                    .limit(1)
                 )
                 result = await db.execute(stmt)
                 tasks = result.scalars().all()
@@ -464,7 +464,7 @@ async def start_tts_queue_worker():
     logger.info("[QueueWorker] TTS Audio Generator Worker task started.")
     from sqlalchemy import or_
 
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(1)
 
     async def worker_job(task_id: int):
         async with sem:
@@ -510,7 +510,7 @@ async def start_tts_queue_worker():
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
-                    .limit(5)
+                    .limit(1)
                 )
                 result = await db.execute(stmt)
                 tasks = result.scalars().all()
@@ -621,7 +621,7 @@ async def start_image_queue_worker():
     logger.info("[QueueWorker] Image Search & Download Worker task started.")
     from sqlalchemy import or_
 
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(1)
 
     async def worker_job(task_id: int):
         async with sem:
@@ -665,7 +665,7 @@ async def start_image_queue_worker():
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
-                    .limit(5)
+                    .limit(1)
                 )
                 result = await db.execute(stmt)
                 tasks = result.scalars().all()

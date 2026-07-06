@@ -103,7 +103,8 @@ async def get_library(
                 "provider": asset.provider,
                 "search_query": asset.search_query,
                 "mime_type": asset.mime_type,
-                "size_bytes": asset.size_bytes
+                "size_bytes": asset.size_bytes,
+                "source_info": asset.source_info
             })
         return response_list
     except Exception as e:

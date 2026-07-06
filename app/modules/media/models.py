@@ -12,4 +12,5 @@ class MediaAsset(Base):
     search_query = Column(String(255), index=True, nullable=True)
     mime_type = Column(String(50), nullable=True)
     size_bytes = Column(BigInteger, nullable=True)
+    source_info = Column(String(512), nullable=True) # E.g. "Vocaburn: Card #123 (Deck: N2 Vocab)"
     created_at = Column(DateTime, default=datetime.utcnow)

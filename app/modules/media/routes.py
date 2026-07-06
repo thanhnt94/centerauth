@@ -40,6 +40,7 @@ class MediaDownloadResponse(BaseModel):
     search_query: Optional[str]
     mime_type: Optional[str]
     size_bytes: Optional[int]
+    source_info: Optional[str] = None
 
 @router.post("/search", response_model=List[MediaSearchResponse])
 async def search_media(
@@ -147,7 +148,8 @@ async def upload_media_asset(
             provider="manual",
             search_query=file.filename,
             mime_type=file.content_type or f"image/{ext}",
-            size_bytes=size_bytes
+            size_bytes=size_bytes,
+            source_info="Manual Upload"
         )
         db.add(asset)
         await db.commit()
@@ -161,7 +163,8 @@ async def upload_media_asset(
             "provider": asset.provider,
             "search_query": asset.search_query,
             "mime_type": asset.mime_type,
-            "size_bytes": asset.size_bytes
+            "size_bytes": asset.size_bytes,
+            "source_info": asset.source_info
         }
     except Exception as e:
         logger.error(f"Failed to upload media asset: {e}")
@@ -271,4 +274,32 @@ async def delete_media_asset(
     except Exception as e:
         await db.rollback()
         logger.error(f"Failed to delete media asset {asset_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class MediaReplaceRequest(BaseModel):
+    url: str
+    provider: str
+    query: Optional[str] = None
+
+@router.post("/{asset_id}/replace", response_model=MediaDownloadResponse)
+async def replace_media_asset(
+    asset_id: int,
+    body: MediaReplaceRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Overwrite an existing media asset's file content with a new image from URL, keeping the link identical.
+    """
+    try:
+        result = await MediaService.replace_image(
+            asset_id=asset_id,
+            url=body.url.strip(),
+            provider=body.provider,
+            query=body.query,
+            db=db
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to replace media asset {asset_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

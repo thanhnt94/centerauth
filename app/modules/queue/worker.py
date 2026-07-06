@@ -554,6 +554,20 @@ async def process_image_task_helper(task_id: int):
 
         try:
             logger.info(f"[QueueWorker-Image] Processing task {task_id}")
+            
+            # Extract source_info from task
+            source_info = None
+            if task.extra_data:
+                try:
+                    extra = json.loads(task.extra_data)
+                    deck_id = extra.get("deck_id")
+                    card_id = extra.get("card_id")
+                    source_info = f"{task.satellite_source or 'Vocaburn'}: Card #{card_id} (Deck #{deck_id})"
+                except Exception:
+                    pass
+            if not source_info and task.satellite_source:
+                source_info = f"{task.satellite_source}"
+
             # 1. Search for image using MediaService (auto provider priority)
             results = await MediaService.search_images(task_prompt, provider="auto", db=db)
             if not results:
@@ -569,7 +583,8 @@ async def process_image_task_helper(task_id: int):
                         url=match["url"],
                         provider=match["provider"],
                         query=task_prompt,
-                        db=db
+                        db=db,
+                        source_info=source_info
                     )
                     if download_res:
                         break

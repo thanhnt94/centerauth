@@ -202,7 +202,7 @@ class MediaService:
         return results
 
     @classmethod
-    async def download_image(cls, url: str, provider: str, query: str, db: AsyncSession) -> Dict[str, Any]:
+    async def download_image(cls, url: str, provider: str, query: str, db: AsyncSession, source_info: Optional[str] = None) -> Dict[str, Any]:
         """
         Download the image locally to static/uploads/media/, register in DB and return the details.
         """
@@ -263,7 +263,8 @@ class MediaService:
                 provider=provider,
                 search_query=query,
                 mime_type=content_type,
-                size_bytes=final_size
+                size_bytes=final_size,
+                source_info=source_info
             )
             db.add(asset)
             await db.commit()
@@ -276,7 +277,8 @@ class MediaService:
             "provider": asset.provider,
             "search_query": asset.search_query,
             "mime_type": asset.mime_type,
-            "size_bytes": asset.size_bytes
+            "size_bytes": asset.size_bytes,
+            "source_info": asset.source_info
         }
 
     @staticmethod
@@ -355,3 +357,63 @@ class MediaService:
                 cropped.save(image_path, format=save_format)
         except Exception as e:
             logger.error(f"[CROP IMAGE] Failed to crop image {image_path} to {ratio}: {e}")
+
+    @classmethod
+    async def replace_image(cls, asset_id: int, url: str, provider: str, query: Optional[str], db: AsyncSession) -> Dict[str, Any]:
+        """
+        Overwrite an existing media asset's file content with a new image from URL, keeping the filename/link identical.
+        """
+        from app.modules.media.models import MediaAsset
+        res = await db.execute(select(MediaAsset).where(MediaAsset.id == asset_id))
+        asset = res.scalar_one_or_none()
+        if not asset:
+            raise Exception("Media asset not found")
+
+        db_settings = await cls.get_settings(db)
+        upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
+        filepath = os.path.join(upload_dir, asset.filename)
+
+        proxy_url = db_settings.get("socks5_proxy") or getattr(settings, "SOCKS5_PROXY", "")
+        client_kwargs = {"timeout": 20.0}
+        if proxy_url and proxy_url.strip():
+            client_kwargs["proxy"] = proxy_url.strip()
+
+        async with httpx.AsyncClient(**client_kwargs) as client:
+            headers = {'User-Agent': 'MindStackMediaService/1.0 (contact@mindstack.com) Python-httpx'}
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                raise Exception(f"Failed to download replacement image: {response.status_code}")
+            content_bytes = response.content
+            content_type = response.headers.get("content-type", "image/jpeg")
+
+        # Save to the EXACT same filepath
+        with open(filepath, "wb") as f:
+            f.write(content_bytes)
+
+        # Apply crop if needed
+        crop_ratio = db_settings.get("media_crop_ratio") or "original"
+        cls.crop_to_ratio(filepath, crop_ratio)
+
+        final_size = os.path.getsize(filepath)
+
+        # Update fields
+        asset.original_url = url
+        asset.provider = provider
+        if query:
+            asset.search_query = query
+        asset.mime_type = content_type
+        asset.size_bytes = final_size
+        
+        await db.commit()
+        await db.refresh(asset)
+
+        return {
+            "id": asset.id,
+            "filename": asset.filename,
+            "local_path": f"/static/uploads/media/{asset.filename}",
+            "provider": asset.provider,
+            "search_query": asset.search_query,
+            "mime_type": asset.mime_type,
+            "size_bytes": asset.size_bytes,
+            "source_info": asset.source_info
+        }

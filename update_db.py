@@ -47,6 +47,19 @@ async def main():
         except Exception as e:
             print(f"Error checking/adding settings column: {e}")
             
+        print("Checking columns in media_assets table...")
+        try:
+            res = await conn.execute(text("PRAGMA table_info(media_assets)"))
+            media_columns = [row[1] for row in res.fetchall()]
+            if "source_info" not in media_columns:
+                print("Adding source_info column to media_assets...")
+                await conn.execute(text("ALTER TABLE media_assets ADD COLUMN source_info VARCHAR(512)"))
+                print("source_info column added successfully.")
+            else:
+                print("source_info column already exists.")
+        except Exception as e:
+            print(f"Error checking/adding source_info column: {e}")
+            
         print("Checking/creating telegram_message_templates table...")
         try:
             await conn.run_sync(Base.metadata.create_all)

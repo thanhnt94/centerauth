@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Image as ImageIcon, Search, Download, Check, 
-  ExternalLink, Copy, Loader2, Database, Trash2
+  ExternalLink, Copy, Loader2, Database, Trash2, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -20,6 +20,7 @@ interface SavedAsset {
   search_query: string;
   mime_type: string;
   size_bytes: number;
+  source_info?: string;
 }
 
 interface MediaConsoleProps {
@@ -41,6 +42,16 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
   // Library state
   const [library, setLibrary] = useState<SavedAsset[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+
+  // Replacing/Replacing-results state
+  const [replacingAsset, setReplacingAsset] = useState<SavedAsset | null>(null);
+  const [replaceQuery, setReplaceQuery] = useState('');
+  const [replaceProvider, setReplaceProvider] = useState('auto');
+  const [replaceResults, setReplaceResults] = useState<SearchResult[]>([]);
+  const [replaceSearching, setReplaceSearching] = useState(false);
+  const [replaceError, setReplaceError] = useState<string | null>(null);
+  const [replacingUrls, setReplacingUrls] = useState<Record<string, boolean>>({});
+  const [cacheBuster, setCacheBuster] = useState(Date.now());
 
   // Settings state
   const [settings, setSettings] = useState({
@@ -232,6 +243,67 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
       alert('Network error while uploading file');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleReplaceSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replaceQuery.trim()) return;
+
+    setReplaceSearching(true);
+    setReplaceError(null);
+    setReplaceResults([]);
+    try {
+      const res = await fetch('/api/chat/media/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: replaceQuery.trim(), provider: replaceProvider, limit: 12 })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Search request failed');
+      }
+
+      const data = await res.json();
+      setReplaceResults(data);
+    } catch (err: any) {
+      console.error(err);
+      setReplaceError(err.message || 'An error occurred during search.');
+    } finally {
+      setReplaceSearching(false);
+    }
+  };
+
+  const handleReplaceImage = async (item: SearchResult) => {
+    if (!replacingAsset) return;
+    setReplacingUrls(prev => ({ ...prev, [item.url]: true }));
+    try {
+      const res = await fetch(`/api/chat/media/${replacingAsset.id}/replace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: item.url,
+          provider: item.provider,
+          query: replaceQuery.trim() || item.title
+        })
+      });
+
+      if (res.ok) {
+        const updatedAsset = await res.json();
+        // Update library state
+        setLibrary(prev => prev.map(asset => asset.id === replacingAsset.id ? updatedAsset : asset));
+        setCacheBuster(Date.now());
+        setReplacingAsset(null); // Close modal
+      } else {
+        const errData = await res.json();
+        alert(errData.detail || 'Failed to replace image');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while replacing image');
+    } finally {
+      setReplacingUrls(prev => ({ ...prev, [item.url]: false }));
     }
   };
 
@@ -462,7 +534,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
                   <div key={asset.id} className="group glass rounded-3xl border border-white/5 overflow-hidden flex flex-col justify-between hover:border-sky-500/30 transition-all duration-300">
                     <div className="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden">
                       <img 
-                        src={asset.local_path} 
+                        src={`${asset.local_path}?t=${cacheBuster}`} 
                         alt={asset.search_query}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
@@ -475,7 +547,12 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
                     <div className="p-4 space-y-3">
                       <div>
                         <p className="text-slate-200 text-xs font-black truncate">{asset.search_query || 'Unnamed'}</p>
-                        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mt-0.5">
+                        {asset.source_info && (
+                          <p className="text-sky-400/80 text-[10px] font-bold truncate mt-0.5" title={asset.source_info}>
+                            📍 {asset.source_info}
+                          </p>
+                        )}
+                        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mt-1">
                           {formatSize(asset.size_bytes)} • {asset.mime_type?.split('/')[1]?.toUpperCase()}
                         </p>
                       </div>
@@ -501,6 +578,19 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
                         >
                           <ExternalLink size={12} />
                         </a>
+                        <button 
+                          onClick={() => {
+                            setReplacingAsset(asset);
+                            setReplaceQuery(asset.search_query || '');
+                            setReplaceProvider('auto');
+                            setReplaceResults([]);
+                            setReplaceError(null);
+                          }}
+                          className="p-2 bg-white/5 hover:bg-sky-600 border border-white/10 hover:border-sky-600 rounded-xl text-slate-400 hover:text-white transition-colors"
+                          title="Replace image with new search"
+                        >
+                          <RefreshCw size={12} />
+                        </button>
                         <button 
                           onClick={() => deleteAsset(asset.id)}
                           className="p-2 bg-white/5 hover:bg-rose-600 border border-white/10 hover:border-rose-600 rounded-xl text-slate-400 hover:text-white transition-colors"
@@ -670,6 +760,120 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({ defaultTab = 'search
               </form>
             )}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Replace Image Modal */}
+      <AnimatePresence>
+        {replacingAsset && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                    <RefreshCw size={16} className="text-sky-400 animate-spin-slow" />
+                    Replace Image Content
+                  </h3>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Filename: <code className="text-slate-400">{replacingAsset.filename}</code> (Vocaburn link will NOT change)
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setReplacingAsset(null)}
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-slate-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {/* Search Form */}
+              <form onSubmit={handleReplaceSearch} className="p-6 bg-slate-950/20 border-b border-white/5 flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Search Query</label>
+                  <input 
+                    type="text"
+                    value={replaceQuery}
+                    onChange={(e) => setReplaceQuery(e.target.value)}
+                    placeholder="Search keywords..."
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 transition-colors"
+                  />
+                </div>
+                <div className="w-full md:w-48 space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Provider</label>
+                  <select 
+                    value={replaceProvider}
+                    onChange={(e) => setReplaceProvider(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 transition-colors cursor-pointer font-bold"
+                  >
+                    <option value="auto">Auto Select</option>
+                    <option value="bing">Bing Search</option>
+                    <option value="wikimedia">Wikimedia Commons</option>
+                    <option value="unsplash">Unsplash</option>
+                    <option value="pexels">Pexels</option>
+                    <option value="pixabay">Pixabay</option>
+                    <option value="google">Google Custom Search</option>
+                  </select>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={replaceSearching}
+                  className="w-full md:w-auto px-6 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-xs font-black uppercase tracking-wider text-white rounded-xl shadow-lg shadow-sky-500/20 flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                >
+                  {replaceSearching ? <Loader2 className="animate-spin" size={14} /> : <Search size={14} />}
+                  Search
+                </button>
+              </form>
+
+              {/* Results Area */}
+              <div className="flex-1 overflow-y-auto p-6 min-h-[300px]">
+                {replaceSearching ? (
+                  <div className="h-64 flex items-center justify-center">
+                    <Loader2 className="animate-spin text-sky-400" size={32} />
+                  </div>
+                ) : replaceError ? (
+                  <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs font-bold text-rose-400 uppercase tracking-wider text-center">
+                    Error: {replaceError}
+                  </div>
+                ) : replaceResults.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {replaceResults.map((item, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => !replacingUrls[item.url] && handleReplaceImage(item)}
+                        className="group relative aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-white/5 hover:border-sky-500/40 cursor-pointer transition-all duration-300"
+                      >
+                        <img 
+                          src={item.thumbnail} 
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-3 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-white">
+                            {replacingUrls[item.url] ? 'Overwriting...' : 'Click to Overwrite'}
+                          </p>
+                        </div>
+                        <span className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider text-sky-400">
+                          {item.provider}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-64 flex flex-col items-center justify-center text-slate-600 gap-2">
+                    <ImageIcon size={32} className="opacity-20" />
+                    <p className="text-[10px] font-black uppercase tracking-wider">No search results to display</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

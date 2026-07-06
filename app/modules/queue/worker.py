@@ -252,14 +252,29 @@ async def process_ai_task_helper(task_id: int):
                         card_id = extra.get("card_id")
                         field = extra.get("field", "explanation")
                         if card_id:
+                            # 1. Clean up this card link from other cache entries to maintain uniqueness
+                            other_caches_stmt = select(AICache).where(AICache.prompt_hash != prompt_hash, AICache.linked_cards != None, AICache.linked_cards != '[]')
+                            other_caches_res = await db.execute(other_caches_stmt)
+                            for other in other_caches_res.scalars().all():
+                                try:
+                                    other_links = json.loads(other.linked_cards)
+                                    updated_links = [
+                                        ol for ol in other_links
+                                        if not (ol.get("card_id") == card_id and ol.get("field") == field and ol.get("satellite_source") == task.satellite_source)
+                                    ]
+                                    if len(updated_links) != len(other_links):
+                                        other.linked_cards = json.dumps(updated_links)
+                                except Exception:
+                                    pass
+                                    
                             links = json.loads(cache_item.linked_cards or "[]")
                             new_link = {
-                                "satellite": task.satellite_source,
+                                "satellite_source": task.satellite_source,
                                 "card_id": card_id,
                                 "field": field,
                                 "callback_url": task.callback_url
                             }
-                            if not any(l.get("card_id") == card_id and l.get("field") == field for l in links):
+                            if not any(l.get("card_id") == card_id and l.get("field") == field and l.get("satellite_source") == task.satellite_source for l in links):
                                 links.append(new_link)
                                 cache_item.linked_cards = json.dumps(links)
                     except Exception as link_err:
@@ -340,8 +355,23 @@ async def process_ai_task_helper(task_id: int):
                         card_id = extra.get("card_id")
                         field = extra.get("field", "explanation")
                         if card_id:
+                            # 1. Clean up this card link from other cache entries to maintain uniqueness
+                            other_caches_stmt = select(AICache).where(AICache.prompt_hash != prompt_hash, AICache.linked_cards != None, AICache.linked_cards != '[]')
+                            other_caches_res = await db.execute(other_caches_stmt)
+                            for other in other_caches_res.scalars().all():
+                                try:
+                                    other_links = json.loads(other.linked_cards)
+                                    updated_links = [
+                                        ol for ol in other_links
+                                        if not (ol.get("card_id") == card_id and ol.get("field") == field and ol.get("satellite_source") == task.satellite_source)
+                                    ]
+                                    if len(updated_links) != len(other_links):
+                                        other.linked_cards = json.dumps(updated_links)
+                                except Exception:
+                                    pass
+                                    
                             initial_links.append({
-                                "satellite": task.satellite_source,
+                                "satellite_source": task.satellite_source,
                                 "card_id": card_id,
                                 "field": field,
                                 "callback_url": task.callback_url
@@ -349,15 +379,29 @@ async def process_ai_task_helper(task_id: int):
                     except Exception:
                         pass
                 
-                new_cache = AICache(
-                    prompt_hash=prompt_hash,
-                    prompt=task_prompt,
-                    response=response_text,
-                    provider=success_provider_name,
-                    model=model_used,
-                    linked_cards=json.dumps(initial_links) if initial_links else "[]"
-                )
-                db.add(new_cache)
+                # Check if cache item already exists to prevent duplicate key
+                cache_stmt = select(AICache).where(AICache.prompt_hash == prompt_hash)
+                cache_res = await db.execute(cache_stmt)
+                existing_cache = cache_res.scalar_one_or_none()
+                if existing_cache:
+                    existing_cache.response = response_text
+                    existing_cache.provider = success_provider_name
+                    existing_cache.model = model_used
+                    curr_links = json.loads(existing_cache.linked_cards or "[]")
+                    for il in initial_links:
+                        if not any(cl.get("card_id") == il["card_id"] and cl.get("field") == il["field"] and cl.get("satellite_source") == il["satellite_source"] for cl in curr_links):
+                            curr_links.append(il)
+                    existing_cache.linked_cards = json.dumps(curr_links)
+                else:
+                    new_cache = AICache(
+                        prompt_hash=prompt_hash,
+                        prompt=task_prompt,
+                        response=response_text,
+                        provider=success_provider_name,
+                        model=model_used,
+                        linked_cards=json.dumps(initial_links) if initial_links else "[]"
+                    )
+                    db.add(new_cache)
                 await db.flush()
             except Exception as cache_write_err:
                 logger.warning(f"[QueueWorker-AI] Failed to save generated text to AI cache: {cache_write_err}")

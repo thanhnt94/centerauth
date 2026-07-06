@@ -871,6 +871,143 @@ async def clear_all_ai_caches(
     await db.commit()
     return {"success": True, "message": "All cached responses cleared successfully!"}
 
+@router.post("/ai-cache/link")
+async def link_card_to_cache(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_auth_db)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    prompt_hash = data.get("prompt_hash")
+    card_id = data.get("card_id")
+    field = data.get("field", "explanation")
+    satellite_source = data.get("satellite_source", "vocaburn")
+    callback_url = data.get("callback_url")
+    
+    if not prompt_hash or not card_id:
+        raise HTTPException(status_code=400, detail="prompt_hash and card_id are required")
+        
+    try:
+        card_id = int(card_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="card_id must be an integer")
+        
+    # Auto-construct callback_url if it's empty and satellite_source is vocaburn
+    if not callback_url and satellite_source == "vocaburn":
+        callback_url = f"http://vocaburn:8000/api/deck/card/{card_id}/update-field"
+        
+    # 1. Fetch target cache
+    stmt = select(AICache).where(AICache.prompt_hash == prompt_hash)
+    res = await db.execute(stmt)
+    cache = res.scalar_one_or_none()
+    if not cache:
+        raise HTTPException(status_code=404, detail="Target cache entry not found")
+        
+    import json
+    # 2. Clean up this card from other cache entries to enforce uniqueness
+    other_caches_stmt = select(AICache).where(AICache.prompt_hash != prompt_hash, AICache.linked_cards != None, AICache.linked_cards != '[]')
+    other_caches_res = await db.execute(other_caches_stmt)
+    for other in other_caches_res.scalars().all():
+        try:
+            other_links = json.loads(other.linked_cards)
+            updated_links = [
+                ol for ol in other_links
+                if not (ol.get("card_id") == card_id and ol.get("field") == field and ol.get("satellite_source") == satellite_source)
+            ]
+            if len(updated_links) != len(other_links):
+                other.linked_cards = json.dumps(updated_links)
+        except Exception:
+            pass
+            
+    # 3. Add to target cache
+    links = []
+    if cache.linked_cards:
+        try:
+            links = json.loads(cache.linked_cards)
+        except Exception:
+            links = []
+            
+    new_link = {
+        "satellite_source": satellite_source,
+        "card_id": card_id,
+        "field": field,
+        "callback_url": callback_url
+    }
+    
+    # Check if exists
+    exists = any(
+        l.get("card_id") == card_id and 
+        l.get("field") == field and 
+        l.get("satellite_source") == satellite_source 
+        for l in links
+    )
+    if not exists:
+        links.append(new_link)
+        cache.linked_cards = json.dumps(links)
+        
+    await db.commit()
+    
+    # 4. Trigger callback immediately to sync card content with this cache
+    if callback_url:
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(callback_url, json={
+                    "field": field,
+                    "content": cache.response
+                })
+        except Exception as cb_err:
+            return {"success": True, "message": f"Linked card successfully, but callback sync failed: {str(cb_err)}"}
+            
+    return {"success": True, "message": "Linked card successfully and synchronized content!"}
+
+@router.post("/ai-cache/unlink")
+async def unlink_card_from_cache(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_auth_db)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    prompt_hash = data.get("prompt_hash")
+    card_id = data.get("card_id")
+    field = data.get("field", "explanation")
+    satellite_source = data.get("satellite_source", "vocaburn")
+    
+    if not prompt_hash or not card_id:
+        raise HTTPException(status_code=400, detail="prompt_hash and card_id are required")
+        
+    try:
+        card_id = int(card_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="card_id must be an integer")
+        
+    stmt = select(AICache).where(AICache.prompt_hash == prompt_hash)
+    res = await db.execute(stmt)
+    cache = res.scalar_one_or_none()
+    if not cache:
+        raise HTTPException(status_code=404, detail="Cache entry not found")
+        
+    import json
+    links = []
+    if cache.linked_cards:
+        try:
+            links = json.loads(cache.linked_cards)
+        except Exception:
+            links = []
+            
+    updated_links = [
+        l for l in links
+        if not (l.get("card_id") == card_id and l.get("field") == field and l.get("satellite_source") == satellite_source)
+    ]
+    
+    cache.linked_cards = json.dumps(updated_links)
+    await db.commit()
+    return {"success": True, "message": "Unlinked card successfully!"}
+
 @router.delete("/ai-cache/{prompt_hash}")
 async def delete_ai_cache(
     prompt_hash: str,

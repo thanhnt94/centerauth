@@ -224,6 +224,70 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
   const [regeneratingHash, setRegeneratingHash] = useState<string | null>(null);
   const [regenConfigTarget, setRegenConfigTarget] = useState<any | null>(null);
 
+  // Manual link state
+  const [linkCardId, setLinkCardId] = useState('');
+  const [linkField, setLinkField] = useState('explanation');
+  const [linkSource, setLinkSource] = useState('vocaburn');
+
+  const handleManualLink = async (hash: string) => {
+    if (!linkCardId.trim()) {
+      alert('Card ID is required.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/chat/ai-cache/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt_hash: hash,
+          card_id: linkCardId.trim(),
+          field: linkField,
+          satellite_source: linkSource
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || 'Linked successfully!');
+        setLinkCardId('');
+        setSelectedCacheDetail(null);
+        fetchCaches(cachesPage, cachesSearch);
+      } else {
+        const err = await res.json();
+        alert('Failed to link card: ' + (err.detail || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to link card.');
+    }
+  };
+
+  const handleManualUnlink = async (hash: string, cardId: number, field: string, source: string) => {
+    if (!confirm(`Are you sure you want to unlink card #${cardId} (${source})?`)) return;
+    try {
+      const res = await fetch('/api/chat/ai-cache/unlink', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt_hash: hash,
+          card_id: cardId,
+          field,
+          satellite_source: source
+        })
+      });
+      if (res.ok) {
+        alert('Unlinked successfully!');
+        setSelectedCacheDetail(null);
+        fetchCaches(cachesPage, cachesSearch);
+      } else {
+        const err = await res.json();
+        alert('Failed to unlink: ' + (err.detail || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to unlink.');
+    }
+  };
+
   const fetchCaches = async (page = cachesPage, searchVal = cachesSearch) => {
     setCachesLoading(true);
     try {
@@ -1255,31 +1319,94 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
                   {selectedCacheDetail.response}
                 </div>
               </div>
+
+              {/* Linked Cards Section */}
+              <div className="space-y-3 bg-slate-950/20 border border-white/5 rounded-2xl p-4">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Linked Cards & Synchronization</h4>
+                
+                {/* Links list */}
+                {(() => {
+                  try {
+                    const links = selectedCacheDetail.linked_cards ? JSON.parse(selectedCacheDetail.linked_cards) : [];
+                    if (links.length === 0) {
+                      return <p className="text-xs text-slate-600 font-bold">No active card links mapped to this cache.</p>;
+                    }
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {links.map((link: any, idx: number) => (
+                          <div 
+                            key={idx} 
+                            className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-1 rounded-xl font-mono text-xs font-bold flex items-center gap-1.5"
+                          >
+                            <span>🔗 {link.satellite_source} #{link.card_id} ({link.field})</span>
+                            <button
+                              type="button"
+                              onClick={() => handleManualUnlink(selectedCacheDetail.prompt_hash, link.card_id, link.field, link.satellite_source)}
+                              className="hover:text-rose-400 text-slate-500 font-bold transition-colors border-l border-white/15 pl-1.5 ml-0.5"
+                              title="Unlink Card"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  } catch (e) {
+                    return null;
+                  }
+                })()}
+
+                {/* Inline link form */}
+                <div className="border-t border-white/5 pt-3 mt-3 flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[8px] font-black text-slate-500 uppercase">App Source</label>
+                    <select
+                      value={linkSource}
+                      onChange={(e) => setLinkSource(e.target.value)}
+                      className="bg-slate-950 border border-white/10 rounded-lg py-1 px-2 text-xs text-white"
+                    >
+                      <option value="vocaburn">Vocaburn</option>
+                      <option value="grammardata">GrammarData</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[8px] font-black text-slate-500 uppercase">Card ID</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 102"
+                      value={linkCardId}
+                      onChange={(e) => setLinkCardId(e.target.value)}
+                      className="w-20 bg-slate-950 border border-white/10 rounded-lg py-1 px-2 text-xs text-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[8px] font-black text-slate-500 uppercase">Target Field</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. explanation"
+                      value={linkField}
+                      onChange={(e) => setLinkField(e.target.value)}
+                      className="w-28 bg-slate-950 border border-white/10 rounded-lg py-1 px-2 text-xs text-white font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleManualLink(selectedCacheDetail.prompt_hash)}
+                    disabled={!linkCardId.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-wider py-1.5 px-3 rounded-lg mt-3.5 transition-all"
+                  >
+                    Link Card
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Modal Footer */}
             <div className="p-6 border-t border-white/5 flex justify-between items-center bg-slate-950/20 text-[10px] text-slate-500 font-bold uppercase">
-              <div className="flex flex-col gap-1">
-                <span>Provider: {selectedCacheDetail.provider} ({selectedCacheDetail.model})</span>
-                {selectedCacheDetail.linked_cards && (() => {
-                  try {
-                    const links = JSON.parse(selectedCacheDetail.linked_cards);
-                    if (links.length > 0) {
-                      return (
-                        <div className="flex items-center gap-1.5 mt-1 normal-case font-normal text-slate-400">
-                          <span className="font-bold text-slate-500 uppercase text-[10px]">Linked:</span>
-                          {links.map((link: any, idx: number) => (
-                            <span key={idx} className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono text-[9px] font-bold">
-                              {link.satellite_source} #{link.card_id} ({link.field})
-                            </span>
-                          ))}
-                        </div>
-                      );
-                    }
-                  } catch (e) {}
-                  return null;
-                })()}
-              </div>
+              <span>Provider: {selectedCacheDetail.provider} ({selectedCacheDetail.model})</span>
               <span>Cached at: {selectedCacheDetail.created_at}</span>
             </div>
           </div>

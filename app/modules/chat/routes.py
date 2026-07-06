@@ -857,6 +857,18 @@ async def get_ai_caches(
         "limit": limit
     }
 
+@router.delete("/ai-cache/clear-all")
+async def clear_all_ai_caches(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_auth_db)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    await db.execute(delete(AICache))
+    await db.commit()
+    return {"success": True, "message": "All cached responses cleared successfully!"}
+
 @router.delete("/ai-cache/{prompt_hash}")
 async def delete_ai_cache(
     prompt_hash: str,

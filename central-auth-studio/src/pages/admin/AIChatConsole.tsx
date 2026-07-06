@@ -66,6 +66,21 @@ const PROVIDER_LABELS: Record<string, string> = {
   fireworks: 'Fireworks AI'
 };
 
+const PROVIDER_MODELS: Record<string, string[]> = {
+  google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'],
+  groq: ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+  cerebras: ['llama3.1-70b', 'llama3.1-8b'],
+  nvidia: ['meta/llama-3.3-70b-instruct', 'meta/llama-3.1-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
+  sambanova: ['Meta-Llama-3.3-70B-Instruct', 'Meta-Llama-3.1-70B-Instruct', 'Meta-Llama-3.1-8B-Instruct'],
+  mistral: ['mistral-large-latest', 'open-mixtral-8x22b', 'mistral-small-latest'],
+  cloudflare: ['@cf/meta/llama-3.1-70b-instruct', '@cf/meta/llama-3-8b-instruct'],
+  github_models: ['gpt-4o', 'gpt-4o-mini', 'gemini-2.5-flash', 'meta-llama-3-70b-instruct'],
+  cohere: ['command-r-plus', 'command-r'],
+  huggingface: ['meta-llama/Llama-3.3-70B-Instruct', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
+  fireworks: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3-70b-instruct']
+};
+
 interface ConfiguredAccountCardProps {
   apiKeyItem: CustomApiKey;
   isActive: boolean;
@@ -242,6 +257,27 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
       }
     } catch (err) {
       console.error('Failed to delete cache:', err);
+    }
+  };
+
+  const handleClearAllCaches = async () => {
+    const confirmation = prompt('WARNING: This will permanently delete ALL cached AI responses. Type "DELETE ALL" to confirm:');
+    if (confirmation !== 'DELETE ALL') {
+      alert('Clear caches cancelled.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/chat/ai-cache/clear-all', { method: 'DELETE' });
+      if (res.ok) {
+        alert('All caches cleared successfully!');
+        fetchCaches(1, cachesSearch);
+      } else {
+        const err = await res.json();
+        alert('Failed to clear caches: ' + (err.detail || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Failed to clear caches:', err);
+      alert('Network error clearing caches.');
     }
   };
 
@@ -988,14 +1024,23 @@ export const AIChatConsole: React.FC<AIChatConsoleProps> = ({ defaultTab = 'chat
         <div className="bg-slate-950/20 border border-white/5 rounded-[2rem] p-8 space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">AI Response Cache</h3>
-            <button 
-              onClick={() => fetchCaches(cachesPage, cachesSearch)}
-              disabled={cachesLoading}
-              className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-slate-300 transition-all flex items-center gap-2 text-xs font-bold"
-            >
-              <RefreshCw className={cachesLoading ? 'animate-spin' : ''} size={14} />
-              Refresh Cache
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={handleClearAllCaches}
+                className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-rose-400 transition-all flex items-center gap-2 text-xs font-bold"
+              >
+                <Trash2 size={14} />
+                Clear All Caches
+              </button>
+              <button 
+                onClick={() => fetchCaches(cachesPage, cachesSearch)}
+                disabled={cachesLoading}
+                className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-slate-300 transition-all flex items-center gap-2 text-xs font-bold"
+              >
+                <RefreshCw className={cachesLoading ? 'animate-spin' : ''} size={14} />
+                Refresh Cache
+              </button>
+            </div>
           </div>
 
           {/* Search Input */}
@@ -1238,6 +1283,24 @@ const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
   const [provider, setProvider] = useState(cache.provider || 'google');
   const [model, setModel] = useState(cache.model || '');
 
+  const defaultModels = PROVIDER_MODELS[provider] || [];
+  const [isCustom, setIsCustom] = useState(!defaultModels.includes(cache.model));
+
+  useEffect(() => {
+    const newDefaults = PROVIDER_MODELS[provider] || [];
+    if (newDefaults.length > 0) {
+      // If the original cache model is still in the new provider's defaults, keep it.
+      // Otherwise fallback to the first default.
+      if (!newDefaults.includes(model)) {
+        setModel(newDefaults[0]);
+        setIsCustom(false);
+      }
+    } else {
+      setModel('');
+      setIsCustom(true);
+    }
+  }, [provider]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onRegenerate(cache.prompt_hash, prompt, provider, model);
@@ -1273,7 +1336,7 @@ const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 items-start">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">AI Provider</label>
                 <select
@@ -1289,13 +1352,36 @@ const RegenConfigModal: React.FC<RegenConfigModalProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">Model Variant</label>
-                <input
-                  type="text"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. gemini-2.5-pro, gpt-4o"
+                <select
+                  value={isCustom ? 'custom' : model}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'custom') {
+                      setIsCustom(true);
+                      setModel('');
+                    } else {
+                      setIsCustom(false);
+                      setModel(val);
+                    }
+                  }}
                   className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2 px-3 text-xs text-white"
-                />
+                >
+                  {defaultModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                  <option value="custom">Custom model...</option>
+                </select>
+                
+                {isCustom && (
+                  <input
+                    type="text"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="Enter custom model ID..."
+                    className="w-full bg-slate-950 border border-white/10 focus:border-indigo-500 outline-none rounded-xl py-2.5 px-3 text-xs text-white mt-2 font-mono"
+                    required
+                  />
+                )}
               </div>
             </div>
           </div>

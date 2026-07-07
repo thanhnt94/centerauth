@@ -629,7 +629,7 @@ async def send_telegram_message(
         u_res = await db.execute(select(UserDB).where(UserDB.id == user_id))
         u_obj = u_res.scalar_one_or_none()
         if u_obj:
-            variables["username"] = u_obj.full_name or u_obj.username
+            variables["username"] = u_obj.username
 
     # Try to load and compile template
     from app.modules.queue.models import TelegramMessageTemplate

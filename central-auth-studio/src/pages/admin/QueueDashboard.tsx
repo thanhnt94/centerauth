@@ -16,7 +16,7 @@ interface TaskItem {
   attempts: number;
   callback_url?: string;
   callback_status?: 'sent' | 'failed' | null;
-  task_type?: 'ai-explain' | 'tts' | 'image';
+  task_type?: 'ai-explain' | 'tts' | 'image' | 'furigana';
   created_at: string;
   processed_at?: string;
   completed_at?: string;
@@ -333,6 +333,7 @@ export const QueueDashboard: React.FC = () => {
             <option value="ai">AI Text</option>
             <option value="tts">TTS Audio</option>
             <option value="image">Image Search</option>
+            <option value="furigana">Furigana</option>
           </select>
 
           {/* Provider Filter */}
@@ -422,6 +423,10 @@ export const QueueDashboard: React.FC = () => {
                         ) : task.task_type === 'image' ? (
                           <span className="text-[8px] font-black uppercase tracking-widest text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/10 flex items-center gap-0.5">
                             <Image size={8} /> IMAGE
+                          </span>
+                        ) : task.task_type === 'furigana' ? (
+                          <span className="text-[8px] font-black uppercase tracking-widest text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/10 flex items-center gap-0.5">
+                            🎌 FURIGANA
                           </span>
                         ) : (
                           <span className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/10 flex items-center gap-0.5">
@@ -679,6 +684,7 @@ export const QueueDashboard: React.FC = () => {
                   <option value="ai">AI Text</option>
                   <option value="tts">TTS Audio</option>
                   <option value="image">Image Search</option>
+                  <option value="furigana">Furigana</option>
                 </select>
               </div>
 

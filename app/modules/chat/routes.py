@@ -1290,3 +1290,23 @@ async def regenerate_ai_cache(
         "response": response_text
     }
 
+class FuriganaRequest(BaseModel):
+    text: str
+
+@router.post("/generate-furigana")
+async def generate_furigana(
+    body: FuriganaRequest,
+    db: AsyncSession = Depends(get_auth_db)
+):
+    """Generates Japanese Furigana syntax using the centralized AI direct generator."""
+    prompt = (
+        "Hãy rắc furigana vào toàn bộ các phần chữ Kanji tiếng Nhật trong đoạn văn bản sau bằng cú pháp Kanji[Furigana]. "
+        "Chỉ bổ sung furigana cho các chữ Kanji tiếng Nhật, các chữ Katakana, Hiragana, số, ký tự đặc biệt và các ngôn ngữ khác (tiếng Anh, tiếng Việt,...) phải giữ nguyên 100% không đổi. "
+        "Không được dịch nghĩa, không thêm giải thích hay thay đổi khoảng trắng và cấu trúc câu.\n"
+        f"Văn bản đầu vào:\n{body.text}\n\n"
+        "Kết quả:"
+    )
+    direct_body = DirectGenerateRequest(prompt=prompt)
+    res = await generate_direct(direct_body, db=db)
+    return {"text": res.get("text", "")}
+

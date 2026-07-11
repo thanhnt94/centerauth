@@ -32,4 +32,7 @@ google-genai
 
 python-telegram-bot
 
+# Japanese NLP
+pykakasi
+
 

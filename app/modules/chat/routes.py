@@ -1295,18 +1295,35 @@ class FuriganaRequest(BaseModel):
 
 @router.post("/generate-furigana")
 async def generate_furigana(
-    body: FuriganaRequest,
-    db: AsyncSession = Depends(get_auth_db)
+    body: FuriganaRequest
 ):
-    """Generates Japanese Furigana syntax using the centralized AI direct generator."""
-    prompt = (
-        "Hãy rắc furigana vào toàn bộ các phần chữ Kanji tiếng Nhật trong đoạn văn bản sau bằng cú pháp Kanji[Furigana]. "
-        "Chỉ bổ sung furigana cho các chữ Kanji tiếng Nhật, các chữ Katakana, Hiragana, số, ký tự đặc biệt và các ngôn ngữ khác (tiếng Anh, tiếng Việt,...) phải giữ nguyên 100% không đổi. "
-        "Không được dịch nghĩa, không thêm giải thích hay thay đổi khoảng trắng và cấu trúc câu.\n"
-        f"Văn bản đầu vào:\n{body.text}\n\n"
-        "Kết quả:"
-    )
-    direct_body = DirectGenerateRequest(prompt=prompt)
-    res = await generate_direct(direct_body, db=db)
-    return {"text": res.get("text", "")}
+    """Generates Japanese Furigana syntax using pykakasi locally for 100% free and instant processing."""
+    import pykakasi
+    import re
+    
+    text = body.text
+    if not text or not text.strip():
+        return {"text": ""}
+        
+    try:
+        kks = pykakasi.kakasi()
+        convert_result = kks.convert(text)
+        
+        parts = []
+        kanji_pattern = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf]')
+        
+        for item in convert_result:
+            orig = item['orig']
+            hira = item['hira']
+            
+            # If the original substring contains Kanji, wrap it
+            if kanji_pattern.search(orig):
+                parts.append(f"{orig}[{hira}]")
+            else:
+                parts.append(orig)
+                
+        return {"text": "".join(parts)}
+    except Exception as e:
+        logger.error(f"Furigana generation error: {e}")
+        return {"text": text}
 

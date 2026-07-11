@@ -212,7 +212,8 @@ async def start_queue_worker():
     await asyncio.gather(
         start_ai_queue_worker(),
         start_tts_queue_worker(),
-        start_image_queue_worker()
+        start_image_queue_worker(),
+        start_furigana_queue_worker()
     )
 
 
@@ -478,7 +479,8 @@ async def start_ai_queue_worker():
                         or_(
                             QueuedTask.extra_data.is_(None),
                             not_(QueuedTask.extra_data.like('%"task_type": "tts"%')) & not_(QueuedTask.extra_data.like('%"task_type":"tts"%')) &
-                            not_(QueuedTask.extra_data.like('%"task_type": "image"%')) & not_(QueuedTask.extra_data.like('%"task_type":"image"%'))
+                            not_(QueuedTask.extra_data.like('%"task_type": "image"%')) & not_(QueuedTask.extra_data.like('%"task_type":"image"%')) &
+                            not_(QueuedTask.extra_data.like('%"task_type": "furigana"%')) & not_(QueuedTask.extra_data.like('%"task_type":"furigana"%'))
                         )
                     )
                     .order_by(QueuedTask.created_at.asc())
@@ -817,3 +819,122 @@ async def start_image_queue_worker():
             logger.error(f"[QueueWorker-Image] Unexpected loop error: {loop_err}", exc_info=True)
 
         await asyncio.sleep(delay_image)
+
+async def process_furigana_task_helper(task_id: int):
+    async with SessionLocal() as db:
+        stmt = select(QueuedTask).where(QueuedTask.id == task_id)
+        result = await db.execute(stmt)
+        task = result.scalar_one_or_none()
+        if not task:
+            return
+            
+        task_prompt = task.prompt
+        task_attempts = task.attempts
+        task_max_retries = task.max_retries
+        
+        try:
+            import pykakasi
+            import re
+            
+            kks = pykakasi.kakasi()
+            convert_result = kks.convert(task_prompt)
+            parts = []
+            kanji_pattern = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf]')
+            
+            for item in convert_result:
+                orig = item['orig']
+                hira = item['hira']
+                if kanji_pattern.search(orig):
+                    parts.append(f"{orig}[{hira}]")
+                else:
+                    parts.append(orig)
+            
+            furi_text = "".join(parts)
+            
+            task.status = "completed"
+            task.result = furi_text
+            task.completed_at = datetime.utcnow()
+            logger.info(f"[QueueWorker-Furigana] Task {task_id} completed successfully.")
+        except Exception as err:
+            logger.error(f"[QueueWorker-Furigana] Furigana generation failed: {err}")
+            if task_attempts < task_max_retries:
+                task.status = "pending"
+                task.error = f"Attempt {task_attempts} failed: {str(err)[:500]}"
+            else:
+                task.status = "failed"
+                task.error = f"Max retries exceeded. Last error: {str(err)[:500]}"
+                task.completed_at = datetime.utcnow()
+                
+        await db.commit()
+        
+        if task.status in ("completed", "failed") and task.callback_url:
+            await _send_callback(task)
+            await db.commit()
+
+async def start_furigana_queue_worker():
+    """Poller worker dedicated solely to processing offline Furigana generation tasks."""
+    logger.info("[QueueWorker] Furigana Generator Worker task started.")
+    from sqlalchemy import or_
+    
+    sem = asyncio.Semaphore(1)
+
+    async def worker_job(task_id: int):
+        async with sem:
+            try:
+                await process_furigana_task_helper(task_id)
+            except Exception as e:
+                logger.error(f"[QueueWorker-Furigana] Error in worker_job for task {task_id}: {e}")
+
+    while True:
+        is_paused = False
+        try:
+            async with SessionLocal() as db:
+                from app.modules.admin.models import SystemSetting
+                res_paused = await db.execute(select(SystemSetting).where(SystemSetting.key == "queue_is_paused"))
+                paused_setting = res_paused.scalar_one_or_none()
+                is_paused = (paused_setting.value == "true") if paused_setting else False
+        except Exception as db_err:
+            logger.warning(f"[QueueWorker-Furigana] Failed to query pause status: {db_err}")
+
+        if is_paused:
+            await asyncio.sleep(1)
+            continue
+
+        try:
+            async with SessionLocal() as db:
+                # Fetch oldest pending Furigana tasks
+                stmt = (
+                    select(QueuedTask)
+                    .where(
+                        QueuedTask.status == "pending",
+                        or_(
+                            QueuedTask.extra_data.like('%"task_type": "furigana"%'),
+                            QueuedTask.extra_data.like('%"task_type":"furigana"%')
+                        )
+                    )
+                    .order_by(QueuedTask.created_at.asc())
+                    .limit(1)
+                )
+                result = await db.execute(stmt)
+                tasks = result.scalars().all()
+
+                if not tasks:
+                    await asyncio.sleep(1)
+                    continue
+
+                task_ids = []
+                for task in tasks:
+                    task.status = "processing"
+                    task.processed_at = datetime.utcnow()
+                    task.attempts += 1
+                    task_ids.append(task.id)
+                await db.commit()
+
+                logger.info(f"[QueueWorker-Furigana] Dispatched {len(task_ids)} tasks: {task_ids}")
+                for tid in task_ids:
+                    asyncio.create_task(worker_job(tid))
+
+        except Exception as loop_err:
+            logger.error(f"[QueueWorker-Furigana] Unexpected loop error: {loop_err}", exc_info=True)
+
+        await asyncio.sleep(0.5)

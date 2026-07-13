@@ -18,6 +18,15 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+import pykakasi
+import re
+try:
+    kks = pykakasi.kakasi()
+except Exception as e:
+    logger.error(f"Failed to initialize pykakasi globally: {e}")
+    kks = None
+kanji_pattern = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf]')
+
 router = APIRouter(prefix="/api/chat", tags=["Chatting"])
 
 class SessionResponse(BaseModel):
@@ -1294,24 +1303,20 @@ class FuriganaRequest(BaseModel):
     text: str
 
 @router.post("/generate-furigana")
-async def generate_furigana(
+def generate_furigana(
     body: FuriganaRequest
 ):
     """Generates Japanese Furigana syntax using pykakasi locally for 100% free and instant processing."""
-    import pykakasi
-    import re
-    
     text = body.text
     if not text or not text.strip():
         return {"text": ""}
         
     try:
-        kks = pykakasi.kakasi()
+        if not kks:
+            return {"text": text}
         convert_result = kks.convert(text)
         
         parts = []
-        kanji_pattern = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf]')
-        
         for item in convert_result:
             orig = item['orig']
             hira = item['hira']

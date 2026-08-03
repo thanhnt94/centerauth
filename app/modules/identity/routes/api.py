@@ -69,7 +69,7 @@ async def login(
         httponly=True,
         samesite="lax",
         path="/",
-        max_age=60 * 60 * 24 * 7  # 1 week
+        max_age=2592000  # 30 days
     )
     
     return res

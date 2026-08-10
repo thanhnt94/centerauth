@@ -6,6 +6,8 @@ from app.modules.sso.models import AuthCode
 from app.modules.clients.services.client_service import ClientService
 from typing import Optional
 
+import hmac
+
 class OAuthService:
     @staticmethod
     async def create_auth_code(db: AsyncSession, client_id: str, user_id: str, redirect_uri: str) -> str:
@@ -26,9 +28,9 @@ class OAuthService:
 
     @staticmethod
     async def validate_auth_code(db: AsyncSession, code: str, client_id: str, client_secret: str) -> Optional[AuthCode]:
-        # Verify client first
+        # Verify client first with constant-time comparison
         client = await ClientService.get_client_by_id(db, client_id)
-        if not client or client.client_secret != client_secret:
+        if not client or not hmac.compare_digest(client.client_secret, client_secret):
             return None
             
         result = await db.execute(
@@ -42,8 +44,8 @@ class OAuthService:
         if not auth_code or auth_code.is_expired():
             return None
             
-        # Optional: Delete code after use
-        # await db.delete(auth_code)
-        # await db.commit()
+        # Delete code after single use to prevent replay attacks
+        await db.delete(auth_code)
+        await db.commit()
         
         return auth_code

@@ -2,8 +2,7 @@ import jwt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
-SECRET_KEY = "central-auth-secret-key-2024" # Should be in config
-ALGORITHM = "HS256"
+from app.core.config import settings
 
 class JWTService:
     @staticmethod
@@ -15,13 +14,13 @@ class JWTService:
             expire = datetime.utcnow() + timedelta(hours=24)
         
         to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
         return encoded_jwt
 
     @staticmethod
     def verify_token(token: str) -> Optional[Dict[str, Any]]:
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             return payload
         except jwt.PyJWTError:
             return None

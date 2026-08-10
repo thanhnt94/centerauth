@@ -638,17 +638,18 @@ async def send_telegram_message(
         if u_obj:
             variables["username"] = u_obj.username
 
-    # Try to load and compile template
-    from app.modules.queue.models import TelegramMessageTemplate
-    tpl_res = await db.execute(
-        select(TelegramMessageTemplate)
-        .where(TelegramMessageTemplate.client_id == source, TelegramMessageTemplate.message_type == message_type)
-    )
-    template_obj = tpl_res.scalar_one_or_none()
-    if template_obj and template_obj.template_text:
-        text = template_obj.template_text
-        for k, v in variables.items():
-            text = text.replace(f"{{{k}}}", str(v))
+    # Only load and compile template if explicit text was not provided by satellite app
+    if not text:
+        from app.modules.queue.models import TelegramMessageTemplate
+        tpl_res = await db.execute(
+            select(TelegramMessageTemplate)
+            .where(TelegramMessageTemplate.client_id == source, TelegramMessageTemplate.message_type == message_type)
+        )
+        template_obj = tpl_res.scalar_one_or_none()
+        if template_obj and template_obj.template_text:
+            text = template_obj.template_text
+            for k, v in variables.items():
+                text = text.replace(f"{{{k}}}", str(v))
 
     if not text:
         raise HTTPException(status_code=400, detail="Missing text or template could not compile")

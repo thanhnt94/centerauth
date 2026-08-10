@@ -18,6 +18,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_FAILOVER_COOLDOWN = {}
+
 import pykakasi
 import re
 try:
@@ -611,11 +613,23 @@ async def generate_direct(
     failover_models = pool_result.scalars().all()
     
     tried_candidates = []
+    import time
+    now_ts = time.time()
     
     for candidate in failover_models:
         provider = candidate.provider
         key_id = candidate.key_id
         model = candidate.model_id
+        cooldown_key = f"{key_id}:{model}"
+        
+        # Check Circuit Breaker Cooldown
+        if cooldown_key in _FAILOVER_COOLDOWN:
+            cooldown_until = _FAILOVER_COOLDOWN[cooldown_key]
+            if now_ts < cooldown_until:
+                logger.info(f"[FAILOVER SKIPPED] Candidate {candidate.key_label} ({model}) is on Circuit Breaker cooldown until {int(cooldown_until - now_ts)}s remaining")
+                continue
+            else:
+                _FAILOVER_COOLDOWN.pop(cooldown_key, None)
         
         # Resolve api_key from database custom keys
         api_key = None
@@ -650,7 +664,9 @@ async def generate_direct(
                 
             return {"text": text, "provider": provider, "model": model, "key_label": candidate.key_label}
         except Exception as e:
-            logger.error(f"[FAILOVER WARNING] Candidate {candidate.key_label} ({model}) failed: {e}")
+            # Place candidate on 3-minute cooldown (180s)
+            _FAILOVER_COOLDOWN[cooldown_key] = time.time() + 180
+            logger.error(f"[FAILOVER WARNING] Candidate {candidate.key_label} ({model}) failed & placed on 3-min cooldown: {e}")
             
     # 2. Final Fallback if pool is empty or all pool candidates failed
     logger.info("[FAILOVER] Falling back to default admin configuration...")

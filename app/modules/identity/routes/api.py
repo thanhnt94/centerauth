@@ -13,12 +13,30 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 async def profile_me(request: Request, db: AsyncSession = Depends(get_db)):
     return await me(request, db)
 
+import time
+
+_LOGIN_ATTEMPTS = {}
+_MAX_LOGIN_ATTEMPTS = 10
+_LOGIN_WINDOW = 300
+
 @router.post("/login")
 async def login(
     request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db)
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    
+    attempts = [t for t in _LOGIN_ATTEMPTS.get(client_ip, []) if now - t < _LOGIN_WINDOW]
+    _LOGIN_ATTEMPTS[client_ip] = attempts
+    
+    if len(attempts) >= _MAX_LOGIN_ATTEMPTS:
+        return fastapi.responses.JSONResponse(
+            content={"success": False, "message": "Quá nhiều lần thử đăng nhập thất bại. Vui lòng chờ 5 phút trước khi thử lại."},
+            status_code=429
+        )
+
     # Support both JSON and Form data for compatibility
     username = None
     password = None
@@ -42,10 +60,14 @@ async def login(
 
     user = await UserService.get_user_by_username(db, username)
     if not user or not user.check_password(password):
+        _LOGIN_ATTEMPTS.setdefault(client_ip, []).append(now)
         return fastapi.responses.JSONResponse(
             content={"success": False, "message": "Invalid username or password"},
             status_code=401
         )
+    
+    # Success -> reset failed attempts counter
+    _LOGIN_ATTEMPTS.pop(client_ip, None)
     
     # Create session token
     token = JWTService.create_token({"sub": user.id, "username": user.username})

@@ -36,6 +36,11 @@ async def exchange_token(request: Request, db: AsyncSession = Depends(get_db)):
         "expires_in": 3600
     }
 
+import time
+
+_TOKEN_VERIFY_CACHE = {}
+_CACHE_TTL = 60
+
 @router.get("/verify-token")
 async def verify_token(request: Request, db: AsyncSession = Depends(get_db)):
     auth_header = request.headers.get("Authorization")
@@ -43,6 +48,15 @@ async def verify_token(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Missing token")
     
     token = auth_header.split(" ")[1]
+    
+    # Fast in-memory cache lookup
+    now = time.time()
+    cached = _TOKEN_VERIFY_CACHE.get(token)
+    if cached:
+        cache_ts, cache_val = cached
+        if now - cache_ts < _CACHE_TTL:
+            return cache_val
+
     payload = JWTService.verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -77,7 +91,7 @@ async def verify_token(request: Request, db: AsyncSession = Depends(get_db)):
     else:
         client_role = "admin" if user.is_admin else "user"
         
-    return {
+    res_dict = {
         "valid": True,
         "user": {
             "id": user.id,
@@ -86,3 +100,14 @@ async def verify_token(request: Request, db: AsyncSession = Depends(get_db)):
             "role": client_role
         }
     }
+    
+    # Cache result
+    _TOKEN_VERIFY_CACHE[token] = (now, res_dict)
+    
+    # Maintenance: cleanup expired keys if cache grows large (> 1000 items)
+    if len(_TOKEN_VERIFY_CACHE) > 1000:
+        expired = [k for k, (ts, _) in _TOKEN_VERIFY_CACHE.items() if now - ts >= _CACHE_TTL]
+        for k in expired:
+            _TOKEN_VERIFY_CACHE.pop(k, None)
+
+    return res_dict

@@ -29,11 +29,10 @@ echo "[3/5] Checking and running database migrations..."
 if [ -f "alembic.ini" ]; then
     alembic upgrade head
 else
-    echo " [!] alembic.ini not found. Running custom migration scripts if present."
     # Fallback to direct script if exists
-    if [ -f "app/modules/admin/models.py" ]; then
-        python -c "from app.core.db import engine, Base; import asyncio; asyncio.run(engine.begin())" || true
-    fi
+    python update_db.py || true
+    python seed_telegram_templates.py || true
+    python seed_timehack_client.py || true
 fi
 
 # 4. Rebuild Vite frontend (including compilation targets and lookbehind fixes for older WebKit devices)

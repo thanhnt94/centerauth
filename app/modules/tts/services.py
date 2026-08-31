@@ -121,7 +121,7 @@ class AudioGenerator:
         return False
 
     @classmethod
-    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "vi", bypass_parsing: bool = False) -> bool:
+    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "vi", bypass_parsing: bool = False, custom_voices: dict = None) -> bool:
         """
         Generates premium TTS audio file using Google Cloud TTS (if configured),
         Microsoft Edge TTS as primary fallback, and Google TTS (gTTS) as secondary fallback.
@@ -152,6 +152,9 @@ class AudioGenerator:
                         default_voices = config_data.get("default_voices", {})
                 except Exception:
                     pass
+
+            if custom_voices and isinstance(custom_voices, dict):
+                default_voices.update(custom_voices)
 
             if bypass_parsing:
                 segments = [{'text': text, 'lang': default_lang}]

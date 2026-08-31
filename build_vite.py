@@ -39,14 +39,21 @@ def build_frontend():
         
     print(f" [VITE] Building CentralAuth Frontend at {frontend_dir}...")
     
+    npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    npx_cmd = "npx.cmd" if sys.platform == "win32" else "npx"
+    
     try:
-        # Install dependencies if node_modules doesn't exist
-        if not os.path.exists(os.path.join(frontend_dir, "node_modules")):
+        bin_vite = os.path.join(frontend_dir, "node_modules", ".bin", "vite.cmd" if sys.platform == "win32" else "vite")
+        if not os.path.exists(bin_vite):
             print(" [VITE] Installing dependencies...")
-            subprocess.run(["npm", "install"], cwd=frontend_dir, shell=True, check=True)
+            subprocess.run([npm_cmd, "install"], cwd=frontend_dir, check=True)
             
         # Run build
-        subprocess.run(["npm", "run", "build"], cwd=frontend_dir, shell=True, check=True)
+        try:
+            subprocess.run([npm_cmd, "run", "build"], cwd=frontend_dir, check=True)
+        except Exception:
+            print(" [VITE] Retrying build with npx vite build...")
+            subprocess.run([npx_cmd, "vite", "build"], cwd=frontend_dir, check=True)
         
         # Run lookbehind fix directly
         fix_lookbehinds(project_dir)
@@ -62,4 +69,5 @@ def build_frontend():
 
 if __name__ == "__main__":
     success = build_frontend()
-    sys.exit(0 if success else 1)
+    if not success:
+        sys.exit(1)

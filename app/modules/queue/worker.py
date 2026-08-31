@@ -533,7 +533,17 @@ async def process_tts_task_helper(task_id: int):
             upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
             os.makedirs(upload_dir, exist_ok=True)
             
-            prompt_hash = AudioGenerator.get_voice_hash(task_prompt)
+            extra_data_dict = {}
+            if task.extra_data:
+                import json
+                try:
+                    extra_data_dict = json.loads(task.extra_data)
+                except Exception:
+                    pass
+            task_voice_mapping = extra_data_dict.get("voice_mapping") or {}
+            task_lang = getattr(task, "lang", None) or "vi"
+
+            prompt_hash = AudioGenerator.get_voice_hash(f"{task_prompt}_{task_lang}_{json.dumps(task_voice_mapping, sort_keys=True)}")
             filename = f"tts_{prompt_hash}.mp3"
             physical_path = os.path.join(upload_dir, filename)
             
@@ -546,7 +556,12 @@ async def process_tts_task_helper(task_id: int):
                 task.result = f"/static/uploads/tts/{filename}"
                 task.completed_at = datetime.utcnow()
             else:
-                success = await AudioGenerator.generate_tts(task_prompt, physical_path)
+                success = await AudioGenerator.generate_tts(
+                    task_prompt,
+                    physical_path,
+                    default_lang=task_lang,
+                    custom_voices=task_voice_mapping
+                )
                 if not success:
                     raise Exception("Failed to synthesize TTS")
                     

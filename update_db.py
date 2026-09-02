@@ -32,9 +32,12 @@ async def main():
             else:
                 print("telegram_settings_template column already exists.")
                 
+        try:
+            await conn.execute(text("DELETE FROM clients WHERE client_id = 'timehack'"))
+            print("Cleaned up legacy duplicate 'timehack' client record.")
         except Exception as e:
-            print(f"Error checking/adding columns in clients: {e}")
-            
+            print(f"Note on duplicate timehack cleanup: {e}")
+
         print("Checking columns in user_telegram_configs table...")
         try:
             res = await conn.execute(text("PRAGMA table_info(user_telegram_configs)"))

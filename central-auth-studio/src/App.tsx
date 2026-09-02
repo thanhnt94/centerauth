@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Shell } from './components/layout/Shell';
 import { Portal } from './pages/Portal';
 import { Clients } from './pages/admin/Clients';
@@ -23,8 +23,9 @@ const App: React.FC = () => {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<Navigate to="/portal" replace />} />
         <Route path="/auth/login" element={<Login />} />
+        <Route path="/landing" element={<LandingPage />} />
         <Route path="*" element={
           <Shell>
             <Routes>

@@ -48,6 +48,10 @@ def build_frontend():
             print(" [VITE] Installing dependencies...")
             subprocess.run([npm_cmd, "install"], cwd=frontend_dir, check=True)
             
+        # Run mandatory type-check before build per Rule #9
+        print(" [VITE] Running TypeScript type check...")
+        subprocess.run([npx_cmd, "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd=frontend_dir, check=True)
+
         # Run build
         try:
             subprocess.run([npm_cmd, "run", "build"], cwd=frontend_dir, check=True)

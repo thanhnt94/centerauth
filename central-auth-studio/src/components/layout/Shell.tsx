@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { UserLaunchpad } from '../../pages/UserLaunchpad';
 
 interface ShellProps {
   children: React.ReactNode;

@@ -280,19 +280,19 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${isSidebarOpen ? 'lg:ml-80' : 'lg:ml-20'}`}>
+      <main className={`flex-1 flex flex-col h-[100dvh] overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'lg:ml-80' : 'lg:ml-20'}`}>
         {/* Header */}
-        <header className={`sticky top-0 z-30 px-3 sm:px-8 h-14 sm:h-16 flex items-center justify-between transition-all duration-200 border-b border-white/5
+        <header className={`sticky top-0 z-30 px-3 sm:px-8 h-12 sm:h-16 shrink-0 flex items-center justify-between transition-all duration-200 border-b border-white/5
           ${scrolled ? 'bg-slate-950/90 backdrop-blur-xl shadow-lg' : 'bg-slate-950/60 backdrop-blur-md'}`}>
           <div className="flex items-center gap-2.5 sm:gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
               title="Toggle Menu"
             >
               <Menu size={18} />
             </button>
-            <div className="h-5 w-[1px] bg-white/10" />
+            <div className="h-4 sm:h-5 w-[1px] bg-white/10" />
             <div className="flex items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-white">
                 {allItems.find(i => location.pathname === i.path)?.label || 'CentralAuth'}
@@ -300,7 +300,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-6">
+          <div className="flex items-center gap-2.5 sm:gap-6">
             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Systems Online</span>
@@ -308,40 +308,40 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
 
             <button 
               onClick={() => navigate('/settings')}
-              className="relative p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+              className="relative p-1.5 sm:p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
               title="Notifications"
             >
-              <Bell size={18} />
-              <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+              <Bell size={17} />
+              <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
             </button>
 
             <div 
               onClick={() => navigate('/settings')}
-              className="flex items-center gap-2.5 pl-2.5 sm:pl-4 border-l border-white/10 cursor-pointer hover:opacity-85 transition-all"
+              className="flex items-center gap-2 pl-2 sm:pl-4 border-l border-white/10 cursor-pointer hover:opacity-85 transition-all"
             >
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-black text-white">{user?.username || 'User'}</p>
                 <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider">{user?.role || 'Member'}</p>
               </div>
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-xs text-white shadow-md uppercase">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-xs text-white shadow-md uppercase">
                 {user?.avatar_initial || 'U'}
               </div>
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 p-3 sm:p-6 lg:p-8 max-w-[1500px] w-full mx-auto pb-20 lg:pb-8">
+        {/* Page Content Viewport */}
+        <div className="flex-1 overflow-y-auto p-2.5 sm:p-6 lg:p-8 max-w-[1500px] w-full mx-auto pb-16 lg:pb-8 flex flex-col">
           {children}
         </div>
 
         {/* ═══════════ MOBILE-FIRST BOTTOM DOCKED NAVIGATION BAR ═══════════ */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-2xl border-t border-white/10 z-40 px-3 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom">
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-2xl border-t border-white/10 z-50 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom">
           <Link
             to="/portal"
             className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
               location.pathname === '/portal' 
-                ? 'text-indigo-400 bg-indigo-500/10' 
+                ? 'text-indigo-400 bg-indigo-500/15' 
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -353,7 +353,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
             to="/settings"
             className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
               location.pathname === '/settings' 
-                ? 'text-indigo-400 bg-indigo-500/10' 
+                ? 'text-indigo-400 bg-indigo-500/15' 
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -366,7 +366,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
               to="/admin/telegram"
               className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
                 location.pathname.startsWith('/admin') 
-                  ? 'text-indigo-400 bg-indigo-500/10' 
+                  ? 'text-indigo-400 bg-indigo-500/15' 
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -387,3 +387,4 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     </div>
   );
 };
+

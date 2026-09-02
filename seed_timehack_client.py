@@ -26,7 +26,15 @@ async def main():
             "focus_summary_enabled": {"type": "boolean", "default": True, "label": "Báo cáo tổng kết thời gian Pomodoro tập trung"}
         })
 
-        client_ids = ["timehack-v1", "timehack"]
+        # 1. Clean up legacy 'timehack' duplicate
+        legacy_res = await db.execute(select(Client).where(Client.client_id == "timehack"))
+        legacy_client = legacy_res.scalar_one_or_none()
+        if legacy_client:
+            print("[-] Removing duplicate 'timehack' client...")
+            await db.delete(legacy_client)
+            await db.commit()
+
+        client_ids = ["timehack-v1"]
         for cid in client_ids:
             client_res = await db.execute(select(Client).where(Client.client_id == cid))
             timehack_client = client_res.scalar_one_or_none()
@@ -43,7 +51,7 @@ async def main():
                     app_description="Hệ thống Quản lý Thời gian, Pomodoro & Thói quen Toàn diện",
                     app_color_theme="violet",
                     is_active=True,
-                    is_visible_on_portal=(cid == "timehack-v1" or cid == "timehack"),
+                    is_visible_on_portal=True,
                     available_roles="free_user,vip_user,mod,admin,guest",
                     telegram_settings_template=telegram_settings_template
                 )
@@ -58,10 +66,11 @@ async def main():
                 timehack_client.app_description = "Hệ thống Quản lý Thời gian, Pomodoro & Thói quen Toàn diện"
                 timehack_client.app_color_theme = "violet"
                 timehack_client.is_active = True
+                timehack_client.is_visible_on_portal = True
                 timehack_client.telegram_settings_template = telegram_settings_template
 
         # 2. Seed Telegram Message Templates for TimeHack
-        for cid in ["timehack-v1", "timehack"]:
+        for cid in ["timehack-v1"]:
             result = await db.execute(
                 select(TelegramMessageTemplate).where(TelegramMessageTemplate.client_id == cid)
             )

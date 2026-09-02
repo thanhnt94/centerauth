@@ -171,12 +171,8 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
 
   const allItems = sections.flatMap(s => s.items);
 
-  if (user && user.role !== 'admin') {
-    return <UserLaunchpad user={user as any} />;
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 flex font-sans">
+    <div className="min-h-screen bg-slate-950 flex font-sans selection:bg-indigo-500/30">
       {/* Sidebar Overlay (Mobile) */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -185,21 +181,21 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden"
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-40 lg:hidden"
           />
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
+      {/* Sidebar (Desktop / Drawer) */}
       <aside 
         className={`fixed top-0 left-0 bottom-0 z-50 transition-all duration-300 ease-in-out bg-slate-950/95 backdrop-blur-2xl border-r border-white/5
-          w-[280px] sm:w-80 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-24'}`}
+          w-[280px] sm:w-80 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-20'}`}
       >
-        <div className="flex flex-col h-full p-6 sm:p-8">
+        <div className="flex flex-col h-full p-4 sm:p-6">
           {/* Logo */}
-          <div className="flex items-center gap-4 mb-8 sm:mb-12">
-             <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.3)] shrink-0">
-               <Shield className="text-white" size={24} />
+          <div className="flex items-center gap-3 mb-6 sm:mb-8">
+             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.3)] shrink-0">
+               <Shield className="text-white" size={20} />
              </div>
              {(isSidebarOpen || window.innerWidth < 1024) && (
                <motion.div 
@@ -207,40 +203,38 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
                  animate={{ opacity: 1, x: 0 }}
                  className="flex flex-col"
                >
-                 <span className="text-lg font-black tracking-tighter text-white">CENTRAL<span className="text-indigo-500">AUTH</span></span>
-                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Enterprise Identity</span>
+                 <span className="text-base font-black tracking-tight text-white">CENTRAL<span className="text-indigo-500">AUTH</span></span>
+                 <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Enterprise Identity</span>
                </motion.div>
              )}
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-6 overflow-y-auto pr-1 custom-scrollbar">
+          <nav className="flex-1 space-y-4 overflow-y-auto pr-1 custom-scrollbar">
             {sections.map((section) => {
               const isExpanded = expandedSections[section.key];
               const showLabels = isSidebarOpen || window.innerWidth < 1024;
               return (
-                <div key={section.key} className="space-y-2">
-                  {showLabels ? (
+                <div key={section.key} className="space-y-1">
+                  {showLabels && user?.role === 'admin' && (
                     <button
                       onClick={() => toggleSection(section.key)}
                       type="button"
-                      className="w-full flex items-center justify-between px-4 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors"
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors"
                     >
                       <span>{section.title}</span>
-                      {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                     </button>
-                  ) : (
-                    <div className="border-t border-white/5 my-4" />
                   )}
                   
                   <AnimatePresence initial={false}>
-                    {(!isSidebarOpen || isExpanded || window.innerWidth < 1024) && (
+                    {(!isSidebarOpen || isExpanded || window.innerWidth < 1024 || user?.role !== 'admin') && (
                       <motion.div
                         initial={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
                         animate={isSidebarOpen ? { height: 'auto', opacity: 1 } : undefined}
                         exit={isSidebarOpen ? { height: 0, opacity: 0 } : undefined}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden space-y-1 pl-1"
+                        transition={{ duration: 0.15 }}
+                        className="overflow-hidden space-y-1 pl-0.5"
                       >
                         {section.items.map((item) => {
                           const isActive = location.pathname === item.path;
@@ -248,14 +242,14 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
                             <Link 
                               key={item.path}
                               to={item.path}
-                              className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group
-                                ${isActive ? 'bg-indigo-600 shadow-[0_0_30px_rgba(79,70,229,0.2)]' : 'hover:bg-white/5'}`}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 group
+                                ${isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
                             >
-                              <div className={`${isActive ? 'text-white' : item.color} group-hover:scale-110 transition-transform shrink-0`}>
+                              <div className={`${isActive ? 'text-white' : item.color} group-hover:scale-105 transition-transform shrink-0`}>
                                 {item.icon}
                               </div>
                               {showLabels && (
-                                <span className={`text-xs font-bold uppercase tracking-wider ${isActive ? 'text-white' : 'text-slate-400'}`}>
+                                <span className={`text-xs font-bold uppercase tracking-wider ${isActive ? 'text-white' : 'text-slate-300'}`}>
                                   {item.label}
                                 </span>
                               )}
@@ -271,14 +265,14 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
           </nav>
 
           {/* User Section */}
-          <div className="pt-6 border-t border-white/5">
+          <div className="pt-4 border-t border-white/5">
              <button 
                onClick={() => window.location.href = '/api/auth/logout'}
-               className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-rose-500/10 transition-all group"
+               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 transition-all group cursor-pointer"
              >
-               <LogOut className="text-slate-500 group-hover:text-rose-500 shrink-0" size={20} />
+               <LogOut className="shrink-0" size={18} />
                {(isSidebarOpen || window.innerWidth < 1024) && (
-                 <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-rose-500">Logout Session</span>
+                 <span className="text-xs font-black uppercase tracking-wider">Logout Session</span>
                )}
              </button>
           </div>
@@ -286,51 +280,109 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className={`flex-1 transition-all duration-500 ${isSidebarOpen ? 'lg:ml-80' : 'lg:ml-24'}`}>
+      <main className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${isSidebarOpen ? 'lg:ml-80' : 'lg:ml-20'}`}>
         {/* Header */}
-        <header className={`sticky top-0 z-40 px-6 sm:px-12 h-16 sm:h-24 flex items-center justify-between transition-all duration-300
-          ${scrolled ? 'bg-slate-950/80 backdrop-blur-xl border-b border-white/5' : 'bg-transparent'}`}>
-          <div className="flex items-center gap-4 sm:gap-6">
+        <header className={`sticky top-0 z-30 px-3 sm:px-8 h-14 sm:h-16 flex items-center justify-between transition-all duration-200 border-b border-white/5
+          ${scrolled ? 'bg-slate-950/90 backdrop-blur-xl shadow-lg' : 'bg-slate-950/60 backdrop-blur-md'}`}>
+          <div className="flex items-center gap-2.5 sm:gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2.5 rounded-xl hover:bg-white/5 text-slate-400 transition-all"
+              className="p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+              title="Toggle Menu"
             >
-              <Menu size={20} />
+              <Menu size={18} />
             </button>
-            <div className="h-8 w-[1px] bg-white/5" />
-            <h1 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">
-               {allItems.find(i => location.pathname === i.path)?.label || 'Mindstack Ecosystem'}
-            </h1>
+            <div className="h-5 w-[1px] bg-white/10" />
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-white">
+                {allItems.find(i => location.pathname === i.path)?.label || 'CentralAuth'}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">Systems Online</span>
+          <div className="flex items-center gap-3 sm:gap-6">
+            <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Systems Online</span>
             </div>
-            <button className="relative p-3 rounded-xl hover:bg-white/5 text-slate-400 transition-all">
-              <Bell size={20} />
-              <div className="absolute top-2 right-2 w-2 h-2 bg-indigo-500 rounded-full border-2 border-slate-950" />
+
+            <button 
+              onClick={() => navigate('/settings')}
+              className="relative p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+              title="Notifications"
+            >
+              <Bell size={18} />
+              <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
             </button>
+
             <div 
               onClick={() => navigate('/settings')}
-              className="flex items-center gap-4 pl-4 border-l border-white/5 cursor-pointer hover:opacity-80 transition-all"
+              className="flex items-center gap-2.5 pl-2.5 sm:pl-4 border-l border-white/10 cursor-pointer hover:opacity-85 transition-all"
             >
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-black text-white">{user?.username || 'Loading...'}</p>
-                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{user?.role || 'User'}</p>
+                <p className="text-xs font-black text-white">{user?.username || 'User'}</p>
+                <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider">{user?.role || 'Member'}</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-900 flex items-center justify-center font-black text-white shadow-xl uppercase">
-                {user?.avatar_initial || '?'}
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-xs text-white shadow-md uppercase">
+                {user?.avatar_initial || 'U'}
               </div>
             </div>
           </div>
         </header>
 
         {/* Page Content */}
-        <div className="p-4 sm:p-6 lg:p-12 pb-24 max-w-[1600px] mx-auto">
+        <div className="flex-1 p-3 sm:p-6 lg:p-8 max-w-[1500px] w-full mx-auto pb-20 lg:pb-8">
           {children}
         </div>
+
+        {/* ═══════════ MOBILE-FIRST BOTTOM DOCKED NAVIGATION BAR ═══════════ */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-2xl border-t border-white/10 z-40 px-3 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom">
+          <Link
+            to="/portal"
+            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
+              location.pathname === '/portal' 
+                ? 'text-indigo-400 bg-indigo-500/10' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <LayoutGrid size={18} />
+            <span className="text-[9px] font-black uppercase tracking-wider">Launchpad</span>
+          </Link>
+
+          <Link
+            to="/settings"
+            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
+              location.pathname === '/settings' 
+                ? 'text-indigo-400 bg-indigo-500/10' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Settings size={18} />
+            <span className="text-[9px] font-black uppercase tracking-wider">Account</span>
+          </Link>
+
+          {user?.role === 'admin' && (
+            <Link
+              to="/admin/telegram"
+              className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
+                location.pathname.startsWith('/admin') 
+                  ? 'text-indigo-400 bg-indigo-500/10' 
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Bot size={18} />
+              <span className="text-[9px] font-black uppercase tracking-wider">Admin</span>
+            </Link>
+          )}
+
+          <button
+            onClick={() => (window.location.href = '/api/auth/logout')}
+            className="flex flex-col items-center gap-1 py-1 px-4 rounded-xl text-slate-400 hover:text-rose-400 transition-all cursor-pointer"
+          >
+            <LogOut size={18} />
+            <span className="text-[9px] font-black uppercase tracking-wider">Logout</span>
+          </button>
+        </nav>
       </main>
     </div>
   );

@@ -77,6 +77,13 @@ async def lifespan(app: FastAPI):
         except Exception as client_migration_error:
             print(f"[MIGRATION ERROR] Failed to migrate clients table: {client_migration_error}")
             
+        # Clean up legacy duplicate 'timehack' client record
+        try:
+            await conn.execute(text("DELETE FROM clients WHERE client_id = 'timehack'"))
+            print("[CLEANUP] Removed legacy duplicate 'timehack' client from database.")
+        except Exception:
+            pass
+            
     # 2. Create tables for AIChat DB
     async with aichat_engine.begin() as conn:
         await conn.run_sync(AIChatBase.metadata.create_all)

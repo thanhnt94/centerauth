@@ -86,104 +86,125 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Orbs */}
+    <div className="min-h-[100dvh] bg-slate-950 flex flex-col justify-center items-center p-3 sm:p-6 relative overflow-hidden">
+      {/* Background Ambient Orbs */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 blur-[150px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[150px] rounded-full" />
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/15 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-600/15 blur-[120px] rounded-full" />
       </div>
 
       <motion.div 
-        initial={{ opacity: 0, y: 30 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md space-y-10 relative z-10"
+        className="w-full max-w-sm space-y-4 sm:space-y-6 relative z-10 my-auto"
       >
-        <div className="text-center space-y-6">
+        {/* Header Branding */}
+        <div className="text-center space-y-2">
           <motion.div 
-            initial={{ scale: 0.8, rotate: -10 }}
-            animate={{ scale: 1, rotate: 0 }}
-            className="inline-flex items-center justify-center w-24 h-24 rounded-[2.5rem] bg-indigo-600 shadow-[0_0_50px_rgba(79,70,229,0.3)] mx-auto"
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30 mx-auto"
           >
-            <Shield size={40} className="text-white" />
+            <Shield size={28} className="text-white" />
           </motion.div>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-black text-white tracking-tighter uppercase">Central <span className="text-indigo-500">Auth</span></h1>
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Ecosystem Identity Node</p>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
+              Central<span className="text-indigo-500">Auth</span>
+            </h1>
+            <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+              Unified Ecosystem Gateway
+            </p>
           </div>
         </div>
 
-        <div className="glass p-10 rounded-[3.5rem] border border-white/10 shadow-2xl relative group overflow-hidden">
-           {/* Animated border effect */}
-           <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent" />
+        {/* Auth Card */}
+        <div className="bg-slate-900/80 backdrop-blur-xl p-5 sm:p-7 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+           {/* Top Accent line */}
+           <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
 
            {error && (
              <motion.div 
                initial={{ opacity: 0, height: 0 }}
                animate={{ opacity: 1, height: 'auto' }}
-               className="mb-8 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center gap-3 text-rose-400 text-xs font-bold"
+               className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center gap-2.5 text-rose-400 text-xs font-bold"
              >
-               <AlertCircle size={16} />
-               {error}
+               <AlertCircle size={15} className="shrink-0" />
+               <span className="flex-1">{error}</span>
              </motion.div>
            )}
 
-           <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Identity Hub ID</label>
+           <form onSubmit={handleSubmit} className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                 <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1 block">
+                   Username or Email
+                 </label>
                  <div className="relative group/input">
-                    <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-indigo-500 transition-colors" size={18} />
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-indigo-400 transition-colors" size={16} />
                     <input 
                       type="text"
                       value={loginId}
                       onChange={(e) => setLoginId(e.target.value)}
                       required
-                      placeholder="Username or email"
-                      className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-5 pl-14 pr-6 text-sm font-medium text-white outline-none focus:border-indigo-500/30 transition-all"
+                      autoFocus
+                      placeholder="Enter username / email"
+                      className="w-full bg-slate-950/60 border border-white/10 rounded-xl h-11 pl-10 pr-3.5 text-xs font-medium text-white outline-none focus:border-indigo-500 focus:bg-slate-950 transition-all placeholder:text-slate-600"
                     />
                  </div>
               </div>
 
-              <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Access Key</label>
+              <div className="space-y-1.5">
+                 <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1 block">
+                   Password
+                 </label>
                  <div className="relative group/input">
-                    <Key className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-indigo-500 transition-colors" size={18} />
+                    <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-indigo-400 transition-colors" size={16} />
                     <input 
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       placeholder="••••••••"
-                      className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-5 pl-14 pr-6 text-sm font-medium text-white outline-none focus:border-indigo-500/30 transition-all"
+                      className="w-full bg-slate-950/60 border border-white/10 rounded-xl h-11 pl-10 pr-3.5 text-xs font-medium text-white outline-none focus:border-indigo-500 focus:bg-slate-950 transition-all placeholder:text-slate-600"
                     />
                  </div>
               </div>
 
-              <div className="flex items-center justify-between px-1">
-                 <label className="flex items-center gap-2 cursor-pointer group">
+              <div className="flex items-center justify-between pt-0.5">
+                 <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input 
                       type="checkbox" 
                       checked={remember}
                       onChange={(e) => setRemember(e.target.checked)}
-                      className="w-4 h-4 rounded border-white/10 bg-slate-900/50 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900 accent-indigo-600 cursor-pointer"
+                      className="w-3.5 h-3.5 rounded border-white/10 bg-slate-950 text-indigo-500 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
                     />
-                    <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-400 transition-colors uppercase tracking-wider">Keep session alive</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Keep session active</span>
                  </label>
               </div>
 
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-[0_15px_30px_rgba(79,70,229,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black uppercase tracking-wider text-xs shadow-lg shadow-indigo-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer mt-2"
               >
-                {loading ? <Loader2 size={16} className="animate-spin" /> : <>Authorize Session <ArrowRight size={16} /></>}
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <>
+                    <span>Authorize Session</span>
+                    <ArrowRight size={14} className="stroke-[2.5]" />
+                  </>
+                )}
               </button>
            </form>
         </div>
 
-        <p className="text-center text-[10px] font-black uppercase tracking-[0.3em] text-slate-600">
-           Protected by Mindstack Quantum Encryption
+        <p className="text-center text-[9px] font-black uppercase tracking-wider text-slate-500">
+           InMind Central Identity Node • TLS 1.3
         </p>
       </motion.div>
     </div>
   );
 };
+
+export default Login;
+

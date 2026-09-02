@@ -212,27 +212,11 @@ export const Portal: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* ═══════════ COMPACT NODE STATUS FOOTER ═══════════ */}
-      <div className="mt-4 pt-2 border-t border-white/5 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-500 px-1">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            SG-1 Node
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1 text-indigo-400">
-            <Shield size={10} />
-            SSO Protected
-          </span>
-        </div>
-
-        <span className="text-slate-600">CentralAuth v2.4</span>
-      </div>
     </div>
   );
 };
 
 export default Portal;
+
 
 

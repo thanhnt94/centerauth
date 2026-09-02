@@ -242,12 +242,18 @@ app.include_router(queue_router)
 app.include_router(tts_router)
 app.include_router(media_router)
 
-# --- SPA Routing (React app for auth, portal, admin) ---
+# Aliases for SPA compatibility
+@app.get("/api/profile/me")
+async def profile_me_alias(request: Request, db: AsyncSession = Depends(get_db)):
+    from app.modules.identity.routes.api import me
+    return await me(request, db)
+
+# --- Universal SPA Routing (React app for auth, portal, settings, admin, etc.) ---
 @app.get("/")
-@app.get("/auth/login")
-@app.get("/auth/register")
 @app.get("/portal")
+@app.get("/settings")
 @app.get("/profile")
+@app.get("/auth/{path:path}")
 @app.get("/admin/{path:path}")
 async def serve_spa(request: Request):
     if os.path.exists(DIST_INDEX):
@@ -255,8 +261,15 @@ async def serve_spa(request: Request):
         return FileResponse(DIST_INDEX)
     return {"message": "SPA not built. Please run 'npm run build' in central-auth-studio."}
 
-# Aliases for SPA compatibility
-@app.get("/api/profile/me")
-async def profile_me_alias(request: Request, db: AsyncSession = Depends(get_db)):
-    from app.modules.identity.routes.api import me
-    return await me(request, db)
+@app.get("/{full_path:path}")
+async def serve_spa_catchall(request: Request, full_path: str):
+    # Avoid intercepting API or docs routes
+    if full_path.startswith("api/") or full_path.startswith("static/") or full_path in ["docs", "redoc", "openapi.json"]:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    if os.path.exists(DIST_INDEX):
+        from fastapi.responses import FileResponse
+        return FileResponse(DIST_INDEX)
+    return {"message": "SPA not built. Please run 'npm run build' in central-auth-studio."}
+

@@ -530,6 +530,7 @@ async def get_telegram_config(
     
     return {
         "is_linked": bool(config.telegram_chat_id),
+        "telegram_chat_id": config.telegram_chat_id,
         "connect_token": config.connect_token,
         "reminder_time": config.reminder_time,
         "is_active": config.is_active,

@@ -870,12 +870,15 @@ async def queue_upload_media(
 
         relative_path = f"/static/uploads/media/{unique_filename}"
         full_url = f"{base_url.rstrip('/')}{relative_path}"
+        canonical_url = f"central-media://{unique_filename}" if ext in allowed_image else f"central-tts://{unique_filename}"
 
         return {
             "status": "success",
             "id": asset.id,
             "filename": unique_filename,
-            "url": relative_path,
+            "canonical_url": canonical_url,
+            "url": canonical_url,
+            "relative_url": relative_path,
             "full_url": full_url,
             "mime_type": mime,
             "size_bytes": size_bytes,

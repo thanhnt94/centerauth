@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, UploadFile, File, Form
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -786,4 +786,105 @@ async def get_all_telegram_logs(
         }
         for l in logs
     ]
+
+
+# -------------------------------------------------------------------
+# Media Upload endpoint for Satellite Apps (Vocaburn, TimeHack, etc.)
+# -------------------------------------------------------------------
+
+@router.post("/media/upload")
+async def queue_upload_media(
+    request: Request,
+    file: UploadFile = File(...),
+    source_info: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """
+    Direct media upload from satellite applications authenticated via X-Queue-Token.
+    Supports both image and audio files, saves to static/uploads/media/ and registers in media_assets.
+    """
+    import os
+    import uuid
+    from app.modules.media.models import MediaAsset
+
+    # Allowed media extensions
+    allowed_image = {"png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"}
+    allowed_audio = {"mp3", "wav", "m4a", "ogg", "aac", "webm", "flac"}
+    allowed_all = allowed_image | allowed_audio
+
+    filename_lower = (file.filename or "media_upload").lower()
+    ext = filename_lower.split(".")[-1] if "." in filename_lower else "jpg"
+    if ext not in allowed_all:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(sorted(allowed_all))}"
+        )
+
+    try:
+        unique_filename = f"{uuid.uuid4().hex}.{ext}"
+        upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
+        os.makedirs(upload_dir, exist_ok=True)
+        dest_path = os.path.join(upload_dir, unique_filename)
+
+        size_bytes = 0
+        with open(dest_path, "wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024) # 1MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
+                size_bytes += len(chunk)
+                if size_bytes > 30 * 1024 * 1024: # 30MB limit
+                    buffer.close()
+                    if os.path.exists(dest_path):
+                        os.remove(dest_path)
+                    raise HTTPException(status_code=413, detail="File too large (max 30MB)")
+
+        # Determine mime type
+        mime = file.content_type
+        if not mime or mime == "application/octet-stream":
+            if ext in allowed_image:
+                mime = f"image/{'jpeg' if ext == 'jpg' else ext}"
+            else:
+                mime = f"audio/{'mpeg' if ext == 'mp3' else ext}"
+
+        # Register in DB
+        asset = MediaAsset(
+            filename=unique_filename,
+            original_url="satellite_upload",
+            provider="satellite_upload",
+            search_query=file.filename,
+            mime_type=mime,
+            size_bytes=size_bytes,
+            source_info=source_info or "Satellite Media Upload"
+        )
+        db.add(asset)
+        await db.commit()
+        await db.refresh(asset)
+
+        # Build public URLs
+        forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        forwarded_host = request.headers.get("x-forwarded-host", request.headers.get("host", "auth.inmind.site"))
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+
+        relative_path = f"/static/uploads/media/{unique_filename}"
+        full_url = f"{base_url.rstrip('/')}{relative_path}"
+
+        return {
+            "status": "success",
+            "id": asset.id,
+            "filename": unique_filename,
+            "url": relative_path,
+            "full_url": full_url,
+            "mime_type": mime,
+            "size_bytes": size_bytes,
+            "media_type": "image" if ext in allowed_image else "audio"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to upload satellite media: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to upload media: {str(e)}")
+
 

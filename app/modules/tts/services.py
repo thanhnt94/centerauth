@@ -11,42 +11,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-def detect_language(text: str, default: str = "en") -> str:
-    """
-    Detects language based on character script features:
-    - Japanese: Hiragana / Katakana
-    - Korean: Hangul
-    - Vietnamese: Latin characters with Vietnamese tone diacritics
-    - Chinese: CJK Unified Ideographs without Japanese kana
-    - English / Latin: Latin characters without Vietnamese diacritics
-    """
-    if not text or not text.strip():
-        return default
-
-    # Japanese Kana
-    if re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text):
-        return "ja"
-
-    # Korean Hangul
-    if re.search(r'[\uac00-\ud7af\u1100-\u11ff]', text):
-        return "ko"
-
-    # Vietnamese diacritics (both lower and upper)
-    vi_diacritics_pattern = r'[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]'
-    if re.search(vi_diacritics_pattern, text):
-        return "vi"
-
-    # Chinese Hanzi (CJK Ideographs) without Kana
-    if re.search(r'[\u4e00-\u9fff]', text):
-        return "zh"
-
-    # Latin letters
-    if re.search(r'[a-zA-Z]', text):
-        return "en"
-
-    return default
-
-
 class AudioGenerator:
     PROMPT_REGEX = re.compile(r'^\s*([a-zA-Z0-9_-]+):\s*(.+)$', re.MULTILINE)
     
@@ -65,7 +29,7 @@ class AudioGenerator:
     }
 
     @staticmethod
-    def parse_segments(text: str, default_lang: str = "auto"):
+    def parse_segments(text: str, default_lang: str = "vi"):
         if not text:
             return []
             
@@ -81,8 +45,9 @@ class AudioGenerator:
                 })
             return segments
             
-        # Fallback to line-by-line format
+        # Fallback to line-by-line format: e.g. ja: 人生 \n vi: cuộc đời
         lines = text.split('\n')
+        current_lang = default_lang if default_lang not in ("multi", "auto") else "vi"
         
         for line in lines:
             line_str = line.strip()
@@ -93,18 +58,15 @@ class AudioGenerator:
             if match:
                 lang = match.group(1).strip().lower()
                 content = match.group(2).strip()
+                current_lang = lang
                 segments.append({
                     'text': content,
                     'lang': lang
                 })
             else:
-                if not default_lang or default_lang in ("auto", "multi"):
-                    seg_lang = detect_language(line_str, default="en")
-                else:
-                    seg_lang = default_lang
                 segments.append({
                     'text': line_str,
-                    'lang': seg_lang
+                    'lang': current_lang
                 })
                 
         return segments
@@ -195,14 +157,18 @@ class AudioGenerator:
             if custom_voices and isinstance(custom_voices, dict):
                 default_voices.update(custom_voices)
 
-            if bypass_parsing:
-                if not default_lang or default_lang in ("auto", "multi"):
-                    effective_lang = detect_language(text, default="en")
+            clean_lang = (default_lang or "multi").strip().lower()
+            if clean_lang not in ("multi", "auto") or bypass_parsing:
+                # User declared a single specific language (e.g. en, vi, ja)
+                single_match = re.fullmatch(r'\[([a-zA-Z0-9_-]+):\s*([^\]]+)\]', text.strip())
+                if single_match:
+                    clean_text = single_match.group(2).strip()
                 else:
-                    effective_lang = default_lang
-                segments = [{'text': text, 'lang': effective_lang}]
+                    clean_text = text.strip()
+                segments = [{'text': clean_text, 'lang': clean_lang}]
             else:
-                segments = cls.parse_segments(text, default_lang)
+                # Multi-language mode: parse bracket tags [vi: ...] [en: ...] or line prefixes
+                segments = cls.parse_segments(text, default_lang="vi")
 
             if not segments:
                 return False

@@ -540,17 +540,15 @@ async def process_tts_task_helper(task_id: int):
                     extra_data_dict = json.loads(task.extra_data)
                 except Exception:
                     pass
-            task_voice_mapping = extra_data_dict.get("voice_mapping") or {}
-            raw_lang = extra_data_dict.get("lang") or getattr(task, "lang", None)
-            from app.modules.tts.services import detect_language
+            task_voice_mapping = dict(AudioGenerator.EDGE_VOICES)
+            if extra_data_dict.get("voice_mapping"):
+                task_voice_mapping.update(extra_data_dict["voice_mapping"])
 
-            if not raw_lang or raw_lang in ("auto", "multi"):
-                task_lang = detect_language(task_prompt, default="en")
-            else:
-                task_lang = raw_lang.strip().lower()
+            raw_lang = extra_data_dict.get("lang") or getattr(task, "lang", None)
+            task_lang = (raw_lang or "multi").strip().lower()
 
             task_voice = extra_data_dict.get("voice_name")
-            if task_voice and task_lang:
+            if task_voice and task_lang != "multi":
                 task_voice_mapping[task_lang] = task_voice
 
             prompt_hash = AudioGenerator.get_voice_hash(f"{task_prompt}_{task_lang}_{json.dumps(task_voice_mapping, sort_keys=True)}")

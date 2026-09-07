@@ -44,12 +44,7 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     if not text:
         raise HTTPException(status_code=400, detail="Text content cannot be empty")
         
-    raw_lang = data.lang
-    from app.modules.tts.services import detect_language
-    if not raw_lang or raw_lang in ("auto", "multi"):
-        lang = detect_language(text, default="en")
-    else:
-        lang = raw_lang.strip().lower()
+    lang = (data.lang or "multi").strip().lower()
 
     bypass_parsing = bool(data.bypass_parsing)
     custom_voices = dict(data.voice_mapping or {})

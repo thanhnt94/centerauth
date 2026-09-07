@@ -17,6 +17,8 @@ router = APIRouter(prefix="/api/tts", tags=["TTS"])
 class TTSGenerateRequest(BaseModel):
     text: str
     lang: Optional[str] = None
+    voice_name: Optional[str] = None
+    voice_mapping: Optional[Dict[str, Any]] = None
     bypass_parsing: Optional[bool] = False
 
 class TTSSettings(BaseModel):
@@ -42,16 +44,22 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     if not text:
         raise HTTPException(status_code=400, detail="Text content cannot be empty")
         
-    lang = data.lang or "vi"
-    bypass_parsing = bool(data.bypass_parsing)
-    
-    # Calculate a unique cache hash based on text, lang, and bypass_parsing
-    import hashlib
-    if lang == "vi" and not bypass_parsing:
-        prompt_hash = AudioGenerator.get_voice_hash(text)
+    raw_lang = data.lang
+    from app.modules.tts.services import detect_language
+    if not raw_lang or raw_lang in ("auto", "multi"):
+        lang = detect_language(text, default="en")
     else:
-        hash_payload = f"{text}||{lang}||{bypass_parsing}"
-        prompt_hash = hashlib.md5(hash_payload.encode('utf-8')).hexdigest()
+        lang = raw_lang.strip().lower()
+
+    bypass_parsing = bool(data.bypass_parsing)
+    custom_voices = dict(data.voice_mapping or {})
+    if data.voice_name:
+        custom_voices[lang] = data.voice_name
+    
+    # Calculate a unique cache hash based on text, lang, bypass_parsing and voices
+    import hashlib
+    hash_payload = f"{text}||{lang}||{bypass_parsing}||{json.dumps(custom_voices, sort_keys=True)}"
+    prompt_hash = hashlib.md5(hash_payload.encode('utf-8')).hexdigest()
     
     # Check cache table
     res = await db.execute(select(TTSCache).where(TTSCache.prompt_hash == prompt_hash))
@@ -73,7 +81,13 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     # Generate if not exists
     if not os.path.exists(physical_path):
         try:
-            success = await AudioGenerator.generate_tts(text, physical_path, lang, bypass_parsing=bypass_parsing)
+            success = await AudioGenerator.generate_tts(
+                text, 
+                physical_path, 
+                default_lang=lang, 
+                bypass_parsing=bypass_parsing,
+                custom_voices=custom_voices
+            )
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to synthesize TTS")
         except Exception as e:

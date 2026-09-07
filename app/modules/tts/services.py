@@ -11,6 +11,42 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+def detect_language(text: str, default: str = "en") -> str:
+    """
+    Detects language based on character script features:
+    - Japanese: Hiragana / Katakana
+    - Korean: Hangul
+    - Vietnamese: Latin characters with Vietnamese tone diacritics
+    - Chinese: CJK Unified Ideographs without Japanese kana
+    - English / Latin: Latin characters without Vietnamese diacritics
+    """
+    if not text or not text.strip():
+        return default
+
+    # Japanese Kana
+    if re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text):
+        return "ja"
+
+    # Korean Hangul
+    if re.search(r'[\uac00-\ud7af\u1100-\u11ff]', text):
+        return "ko"
+
+    # Vietnamese diacritics (both lower and upper)
+    vi_diacritics_pattern = r'[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]'
+    if re.search(vi_diacritics_pattern, text):
+        return "vi"
+
+    # Chinese Hanzi (CJK Ideographs) without Kana
+    if re.search(r'[\u4e00-\u9fff]', text):
+        return "zh"
+
+    # Latin letters
+    if re.search(r'[a-zA-Z]', text):
+        return "en"
+
+    return default
+
+
 class AudioGenerator:
     PROMPT_REGEX = re.compile(r'^\s*([a-zA-Z0-9_-]+):\s*(.+)$', re.MULTILINE)
     
@@ -29,7 +65,7 @@ class AudioGenerator:
     }
 
     @staticmethod
-    def parse_segments(text: str, default_lang: str = "vi"):
+    def parse_segments(text: str, default_lang: str = "auto"):
         if not text:
             return []
             
@@ -47,25 +83,28 @@ class AudioGenerator:
             
         # Fallback to line-by-line format
         lines = text.split('\n')
-        current_lang = default_lang
         
         for line in lines:
-            if not line.strip():
+            line_str = line.strip()
+            if not line_str:
                 continue 
                 
             match = AudioGenerator.PROMPT_REGEX.match(line)
             if match:
-                lang = match.group(1)
-                content = match.group(2) # Group 2 contains text now since we simplified regex
-                current_lang = lang
+                lang = match.group(1).strip().lower()
+                content = match.group(2).strip()
                 segments.append({
-                    'text': content.strip(),
+                    'text': content,
                     'lang': lang
                 })
             else:
+                if not default_lang or default_lang in ("auto", "multi"):
+                    seg_lang = detect_language(line_str, default="en")
+                else:
+                    seg_lang = default_lang
                 segments.append({
-                    'text': line.strip(),
-                    'lang': current_lang
+                    'text': line_str,
+                    'lang': seg_lang
                 })
                 
         return segments
@@ -121,7 +160,7 @@ class AudioGenerator:
         return False
 
     @classmethod
-    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "vi", bypass_parsing: bool = False, custom_voices: dict = None) -> bool:
+    async def generate_tts(cls, text: str, output_path: str, default_lang: str = "auto", bypass_parsing: bool = False, custom_voices: dict = None) -> bool:
         """
         Generates premium TTS audio file using Google Cloud TTS (if configured),
         Microsoft Edge TTS as primary fallback, and Google TTS (gTTS) as secondary fallback.
@@ -157,7 +196,11 @@ class AudioGenerator:
                 default_voices.update(custom_voices)
 
             if bypass_parsing:
-                segments = [{'text': text, 'lang': default_lang}]
+                if not default_lang or default_lang in ("auto", "multi"):
+                    effective_lang = detect_language(text, default="en")
+                else:
+                    effective_lang = default_lang
+                segments = [{'text': text, 'lang': effective_lang}]
             else:
                 segments = cls.parse_segments(text, default_lang)
 

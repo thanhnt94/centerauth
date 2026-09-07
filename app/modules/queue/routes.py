@@ -43,6 +43,20 @@ async def verify_queue_token(x_queue_token: str = Header(...)):
 # Submit endpoints
 # -------------------------------------------------------------------
 
+def _merge_extra_data(extra_str: Optional[str], lang: Optional[str], voice_name: Optional[str]) -> Optional[str]:
+    if not lang and not voice_name:
+        return extra_str
+    try:
+        data = json.loads(extra_str) if extra_str else {}
+    except Exception:
+        data = {"raw_extra": extra_str}
+    if lang and "lang" not in data:
+        data["lang"] = lang
+    if voice_name and "voice_name" not in data:
+        data["voice_name"] = voice_name
+    return json.dumps(data)
+
+
 @router.post("/submit", response_model=TaskResponse)
 async def submit_task(
     body: TaskSubmitRequest,
@@ -50,6 +64,7 @@ async def submit_task(
     _auth: bool = Depends(verify_queue_token),
 ):
     """Submit a single task to the queue."""
+    merged_extra = _merge_extra_data(body.extra_data, body.lang, body.voice_name)
     task = QueuedTask(
         id=str(uuid.uuid4()),
         satellite_source=body.satellite_source,
@@ -58,7 +73,7 @@ async def submit_task(
         model=body.model,
         provider_priority=json.dumps(body.provider_priority) if body.provider_priority else None,
         callback_url=body.callback_url,
-        extra_data=body.extra_data,
+        extra_data=merged_extra,
         max_retries=body.max_retries,
         status="pending",
         created_at=datetime.utcnow(),
@@ -80,6 +95,7 @@ async def submit_batch(
     """Submit multiple tasks at once."""
     created_tasks = []
     for item in body.tasks:
+        merged_extra = _merge_extra_data(item.extra_data, item.lang, item.voice_name)
         task = QueuedTask(
             id=str(uuid.uuid4()),
             satellite_source=item.satellite_source,
@@ -88,7 +104,7 @@ async def submit_batch(
             model=item.model,
             provider_priority=json.dumps(item.provider_priority) if item.provider_priority else None,
             callback_url=item.callback_url,
-            extra_data=item.extra_data,
+            extra_data=merged_extra,
             max_retries=item.max_retries,
             status="pending",
             created_at=datetime.utcnow(),

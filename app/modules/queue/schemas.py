@@ -15,6 +15,8 @@ class TaskSubmitRequest(BaseModel):
     callback_url: Optional[str] = Field(None, description="URL to POST results to when complete")
     extra_data: Optional[str] = Field(None, description="Arbitrary JSON payload from satellite")
     max_retries: int = Field(3, description="Max retry attempts on failure")
+    lang: Optional[str] = Field(None, description="Language for TTS or localization e.g. en, vi, ja")
+    voice_name: Optional[str] = Field(None, description="Specific voice identifier for TTS e.g. en-US-AriaNeural")
 
 
 class TaskBatchSubmitRequest(BaseModel):

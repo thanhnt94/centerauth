@@ -881,7 +881,7 @@ async def queue_upload_media(
 
         # Build public URLs
         forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-        forwarded_host = request.headers.get("x-forwarded-host", request.headers.get("host", "auth.inmind.site"))
+        forwarded_host = request.headers.get("x-forwarded-host", request.headers.get("host", "inmind.site"))
         base_url = f"{forwarded_proto}://{forwarded_host}"
 
         relative_path = f"/static/uploads/media/{unique_filename}"

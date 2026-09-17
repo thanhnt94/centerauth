@@ -14,10 +14,7 @@ from sqlalchemy import select
 async def main():
     print("[+] Connecting to CentralAuth database...")
     async with SessionLocal() as db:
-        # 1. Check / Seed Client for QuizMind
-        client_res = await db.execute(select(Client).where(Client.client_id == "quizmind"))
-        quizmind_client = client_res.scalar_one_or_none()
-
+        # 1. Check / Seed Client for QuizMind (both quizmind and quizmind-v1)
         telegram_settings_template = json.dumps({
             "reminder_time": {"type": "time", "default": "20:00", "label": "Giờ nhắc làm quiz bài tập"},
             "is_active": {"type": "boolean", "default": True, "label": "Bật nhắc nhở học bài hàng ngày"},
@@ -25,29 +22,36 @@ async def main():
             "weekly_summary_enabled": {"type": "boolean", "default": True, "label": "Báo cáo tóm tắt tiến độ tuần"}
         })
 
-        if not quizmind_client:
-            print("[+] Registering QuizMind as authorized SSO client...")
-            quizmind_client = Client(
-                name="QuizMind",
-                client_id="quizmind",
-                client_secret="quizmind-secret-key-2026",
-                app_url="https://quiz.inmind.site",
-                redirect_uri="https://quiz.inmind.site/auth-center/callback,http://localhost:5080/auth-center/callback",
-                app_icon="fas fa-brain",
-                app_description="Hệ thống trắc nghiệm và lộ trình học tập thông minh",
-                app_color_theme="indigo",
-                is_active=True,
-                is_visible_on_portal=True,
-                available_roles="free_user,vip_user,mod,admin,guest",
-                telegram_settings_template=telegram_settings_template
-            )
-            db.add(quizmind_client)
-        else:
-            print("[+] Updating existing QuizMind client details...")
-            quizmind_client.redirect_uri = "https://quiz.inmind.site/auth-center/callback,http://localhost:5080/auth-center/callback"
-            quizmind_client.app_url = "https://quiz.inmind.site"
-            quizmind_client.is_active = True
-            quizmind_client.telegram_settings_template = telegram_settings_template
+        client_ids = ["quizmind", "quizmind-v1"]
+        for cid in client_ids:
+            client_res = await db.execute(select(Client).where(Client.client_id == cid))
+            client_obj = client_res.scalar_one_or_none()
+            if not client_obj:
+                print(f"[+] Registering {cid} as authorized SSO client...")
+                client_obj = Client(
+                    name="QuizMind",
+                    client_id=cid,
+                    client_secret="quizmind-secret-key-2026",
+                    app_url="https://quiz.inmind.site",
+                    redirect_uri="https://quiz.inmind.site/auth-center/callback,http://localhost:5080/auth-center/callback",
+                    app_icon="fas fa-brain",
+                    app_description="Hệ thống trắc nghiệm và lộ trình học tập thông minh",
+                    app_color_theme="indigo",
+                    is_active=True,
+                    is_visible_on_portal=True,
+                    available_roles="free_user,vip_user,mod,admin,guest",
+                    telegram_settings_template=telegram_settings_template
+                )
+                db.add(client_obj)
+            else:
+                print(f"[+] Updating existing client {cid} details...")
+                client_obj.name = "QuizMind"
+                client_obj.client_secret = "quizmind-secret-key-2026"
+                client_obj.redirect_uri = "https://quiz.inmind.site/auth-center/callback,http://localhost:5080/auth-center/callback"
+                client_obj.app_url = "https://quiz.inmind.site"
+                client_obj.is_active = True
+                client_obj.is_visible_on_portal = True
+                client_obj.telegram_settings_template = telegram_settings_template
 
         # 2. Check / Seed Telegram Message Templates for QuizMind
         result = await db.execute(

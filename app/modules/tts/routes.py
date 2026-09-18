@@ -20,6 +20,9 @@ class TTSGenerateRequest(BaseModel):
     voice_name: Optional[str] = None
     voice_mapping: Optional[Dict[str, Any]] = None
     bypass_parsing: Optional[bool] = False
+    app: Optional[str] = None
+    folder: Optional[str] = None
+    subfolder: Optional[str] = "audio"
 
 class TTSSettings(BaseModel):
     default_engine: str = "edge"
@@ -62,16 +65,28 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
     
     # Setup paths
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
-    os.makedirs(upload_dir, exist_ok=True)
-    
     filename = f"tts_{prompt_hash}.mp3"
+
+    app_name = (data.app or "").strip().lower()
+    folder_name = (data.folder or "").strip()
+    subfolder_name = (data.subfolder or "audio").strip()
+
+    if app_name and folder_name:
+        rel_folder = f"{app_name}/{folder_name}/{subfolder_name}"
+        upload_dir = os.path.join(base_dir, "static", rel_folder)
+        url = f"/static/{rel_folder}/{filename}"
+        canonical_url = f"central://{rel_folder}/{filename}"
+    else:
+        upload_dir = os.path.join(base_dir, "static", "uploads", "tts")
+        url = f"/static/uploads/tts/{filename}"
+        canonical_url = f"central-tts://{filename}"
+
+    os.makedirs(upload_dir, exist_ok=True)
     physical_path = os.path.join(upload_dir, filename)
-    url = f"/static/uploads/tts/{filename}"
     
     # If in DB and exists on disk, reuse it immediately
     if cache_item and os.path.exists(physical_path):
-        return {"url": url, "filename": filename, "cached": True}
+        return {"url": url, "canonical_url": canonical_url, "filename": filename, "cached": True}
         
     # Generate if not exists
     if not os.path.exists(physical_path):
@@ -104,7 +119,7 @@ async def generate_tts_endpoint(data: TTSGenerateRequest, db: AsyncSession = Dep
             # In case of concurrency insert clash, just ignore
             pass
             
-    return {"url": url, "filename": filename, "cached": False}
+    return {"url": url, "canonical_url": canonical_url, "filename": filename, "cached": False}
 
 class TTSHistoryItem(BaseModel):
     filename: str

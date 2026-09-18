@@ -813,12 +813,16 @@ async def queue_upload_media(
     request: Request,
     file: UploadFile = File(...),
     source_info: Optional[str] = Form(None),
+    app: Optional[str] = Form(None),
+    folder: Optional[str] = Form(None),
+    subfolder: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     _auth: bool = Depends(verify_queue_token)
 ):
     """
     Direct media upload from satellite applications authenticated via X-Queue-Token.
-    Supports both image and audio files, saves to static/uploads/media/ and registers in media_assets.
+    Supports both image and audio files, saves to static/{app}/{folder}/{subfolder}/ or static/uploads/media/
+    and registers in media_assets.
     """
     import os
     import uuid
@@ -839,7 +843,21 @@ async def queue_upload_media(
 
     try:
         unique_filename = f"{uuid.uuid4().hex}.{ext}"
-        upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
+
+        app_name = (app or "").strip().lower()
+        folder_name = (folder or "").strip()
+        subfolder_name = (subfolder or ("images" if ext in allowed_image else "audio")).strip()
+
+        if app_name and folder_name:
+            rel_dir = f"{app_name}/{folder_name}/{subfolder_name}"
+            upload_dir = os.path.join(settings.STATIC_DIR, rel_dir)
+            relative_path = f"/static/{rel_dir}/{unique_filename}"
+            canonical_url = f"central://{rel_dir}/{unique_filename}"
+        else:
+            upload_dir = os.path.join(settings.UPLOAD_FOLDER, "media")
+            relative_path = f"/static/uploads/media/{unique_filename}"
+            canonical_url = f"central-media://{unique_filename}" if ext in allowed_image else f"central-tts://{unique_filename}"
+
         os.makedirs(upload_dir, exist_ok=True)
         dest_path = os.path.join(upload_dir, unique_filename)
 
@@ -884,9 +902,7 @@ async def queue_upload_media(
         forwarded_host = request.headers.get("x-forwarded-host", request.headers.get("host", "inmind.site"))
         base_url = f"{forwarded_proto}://{forwarded_host}"
 
-        relative_path = f"/static/uploads/media/{unique_filename}"
         full_url = f"{base_url.rstrip('/')}{relative_path}"
-        canonical_url = f"central-media://{unique_filename}" if ext in allowed_image else f"central-tts://{unique_filename}"
 
         return {
             "status": "success",

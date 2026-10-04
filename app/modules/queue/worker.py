@@ -151,6 +151,7 @@ async def _send_callback(task: QueuedTask):
         return
 
     payload = {
+        "id": task.id,
         "task_id": task.id,
         "satellite_source": task.satellite_source,
         "status": task.status,
@@ -162,12 +163,19 @@ async def _send_callback(task: QueuedTask):
     }
 
     try:
+        from app.core.config import settings
+        queue_token = getattr(settings, "QUEUE_API_SECRET", "super-secret-token-123")
+        headers = {
+            "Content-Type": "application/json",
+            "X-Queue-Token": queue_token,
+            "Authorization": f"Bearer {queue_token}"
+        }
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 task.callback_url,
                 json=payload,
                 timeout=15.0,
-                headers={"Content-Type": "application/json"}
+                headers=headers
             )
             if resp.status_code < 300:
                 task.callback_status = "sent"
@@ -186,6 +194,35 @@ async def _send_callback(task: QueuedTask):
 # -------------------------------------------------------------------
 # Main worker loop
 # -------------------------------------------------------------------
+
+async def start_callback_retry_worker():
+    """Poller worker dedicated to retrying failed callbacks for completed tasks."""
+    logger.info("[QueueWorker] Callback Retry Worker started.")
+    while True:
+        try:
+            await asyncio.sleep(15)
+            async with SessionLocal() as db:
+                stmt = (
+                    select(QueuedTask)
+                    .where(
+                        QueuedTask.status == "completed",
+                        QueuedTask.callback_status == "failed",
+                        QueuedTask.callback_url.isnot(None)
+                    )
+                    .order_by(QueuedTask.completed_at.asc())
+                    .limit(25)
+                )
+                res = await db.execute(stmt)
+                failed_tasks = res.scalars().all()
+                if failed_tasks:
+                    logger.info(f"[QueueWorker-Retry] Retrying {len(failed_tasks)} failed callbacks...")
+                    for t in failed_tasks:
+                        await _send_callback(t)
+                    await db.commit()
+        except Exception as retry_err:
+            logger.error(f"[QueueWorker-Retry] Callback retry error: {retry_err}")
+            await asyncio.sleep(30)
+
 
 async def start_queue_worker():
     """
@@ -213,7 +250,8 @@ async def start_queue_worker():
         start_ai_queue_worker(),
         start_tts_queue_worker(),
         start_image_queue_worker(),
-        start_furigana_queue_worker()
+        start_furigana_queue_worker(),
+        start_callback_retry_worker()
     )
 
 

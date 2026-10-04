@@ -922,4 +922,27 @@ async def queue_upload_media(
         logger.error(f"Failed to upload satellite media: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to upload media: {str(e)}")
 
+@router.post("/retry-failed-callbacks")
+async def retry_failed_callbacks_endpoint(
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_queue_token)
+):
+    """Manually trigger retry for all completed tasks whose callback delivery previously failed."""
+    from app.modules.queue.worker import _send_callback
+    stmt = (
+        select(QueuedTask)
+        .where(
+            QueuedTask.status == "completed",
+            QueuedTask.callback_status == "failed",
+            QueuedTask.callback_url.isnot(None)
+        )
+    )
+    res = await db.execute(stmt)
+    tasks = res.scalars().all()
+    count = len(tasks)
+    for t in tasks:
+        await _send_callback(t)
+    await db.commit()
+    return {"status": "ok", "retried_count": count}
+
 

@@ -977,12 +977,21 @@ async def link_card_to_cache(
     # 4. Trigger callback immediately to sync card content with this cache
     if callback_url:
         import httpx
+        from app.core.config import settings
+        queue_token = getattr(settings, "QUEUE_API_SECRET", "super-secret-token-123")
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(callback_url, json={
-                    "field": field,
-                    "content": cache.response
-                })
+                await client.post(
+                    callback_url,
+                    json={
+                        "field": field,
+                        "content": cache.response
+                    },
+                    headers={
+                        "X-Queue-Token": queue_token,
+                        "Authorization": f"Bearer {queue_token}"
+                    }
+                )
         except Exception as cb_err:
             return {"success": True, "message": f"Linked card successfully, but callback sync failed: {str(cb_err)}"}
             
